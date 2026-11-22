@@ -1,0 +1,155 @@
+{
+  "version": "1.0",
+  "name": "sozlesmeli_personel_listesi",
+  "description": "Sözleşmeli Personel Listesi (KurumsalYatayMaster miraslı — Sabit Header & Footer)",
+  "isMasterTemplate": false,
+  "masterReportName": "KurumsalYatayMaster",
+  "inheritMasterHeader": true,
+  "inheritMasterFooter": true,
+  "page": {
+    "paperSize": "A4",
+    "orientation": "Landscape",
+    "widthMm": 297,
+    "heightMm": 210,
+    "marginTopMm": 5,
+    "marginRightMm": 5,
+    "marginBottomMm": 5,
+    "marginLeftMm": 5,
+    "gridSizeMm": 2,
+    "showGrid": true,
+    "snapToGrid": true,
+    "watermark": {
+      "enabled": false,
+      "text": "SOBİS",
+      "fontFamily": "Segoe UI, sans-serif",
+      "fontSizePt": 72,
+      "color": "#cbd5e1",
+      "angle": -35,
+      "opacity": 0.12
+    }
+  },
+  "dataSources": [
+    {
+      "name": "SqlDataSource1",
+      "alias": "SqlDataSource1",
+      "type": "schema",
+      "columns": [
+        { "name": "TCKIMLIKNO", "dataType": "string" },
+        { "name": "KADRO_KURUM", "dataType": "string" },
+        { "name": "KADRO_GOREV_YERI", "dataType": "string" },
+        { "name": "FIILI_KURUM", "dataType": "string" },
+        { "name": "FIILI_GOREV_YERI", "dataType": "string" },
+        { "name": "BIRIM_SUBE", "dataType": "string" },
+        { "name": "BIRIM_SUBE_ALT", "dataType": "string" },
+        { "name": "UNVAN", "dataType": "string" },
+        { "name": "EK_UNVAN", "dataType": "string" },
+        { "name": "BAS_TAR", "dataType": "string" },
+        { "name": "BIT_TAR", "dataType": "string" },
+        { "name": "AD_SOYAD", "dataType": "string" },
+        { "name": "BRANS", "dataType": "string" }
+      ]
+    }
+  ],
+  "variables": {},
+  "bands": [
+    {
+      "id": "spl_title",
+      "type": "ReportTitle",
+      "name": "RaporBasligi",
+      "heightMm": 10,
+      "backgroundColor": "#eef2f9",
+      "components": [
+        {
+          "id": "spl_t1",
+          "type": "Text",
+          "name": "TxtRaporBaslik",
+          "xMm": 0,
+          "yMm": 1,
+          "widthMm": 287,
+          "heightMm": 8,
+          "text": "SÖZLEŞMELİ PERSONEL LİSTESİ",
+          "fontFamily": "Segoe UI, sans-serif",
+          "fontSizePt": 12,
+          "bold": true,
+          "color": "#0f2744",
+          "backgroundColor": "transparent",
+          "borderColor": "#cbd5e1",
+          "borderWidthPx": 1,
+          "borderStyle": "Solid",
+          "borderSides": "Bottom",
+          "hAlign": "center",
+          "vAlign": "middle",
+          "wordWrap": true
+        }
+      ]
+    },
+    {
+      "id": "spl_hdr",
+      "type": "Header",
+      "name": "TabloBaslik",
+      "heightMm": 8,
+      "backgroundColor": "#1e3a5f",
+      "printOnAllPages": true,
+      "components": [
+        { "id": "h1", "type": "Text", "name": "HdrTC", "xMm": 0, "yMm": 0, "widthMm": 22, "heightMm": 8, "text": "Kimlik No", "fontFamily": "Tahoma, sans-serif", "fontSizePt": 8, "bold": true, "color": "#ffffff", "borderColor": "#475569", "borderWidthPx": 1, "borderSides": "All", "hAlign": "left", "vAlign": "middle", "wordWrap": true },
+        { "id": "h2", "type": "Text", "name": "HdrAdSoyad", "xMm": 22, "yMm": 0, "widthMm": 32, "heightMm": 8, "text": "Ad Soyad", "fontFamily": "Tahoma, sans-serif", "fontSizePt": 8, "bold": true, "color": "#ffffff", "borderColor": "#475569", "borderWidthPx": 1, "borderSides": "All", "hAlign": "left", "vAlign": "middle", "wordWrap": true },
+        { "id": "h3", "type": "Text", "name": "HdrUnvan", "xMm": 54, "yMm": 0, "widthMm": 34, "heightMm": 8, "text": "Ünvan", "fontFamily": "Tahoma, sans-serif", "fontSizePt": 8, "bold": true, "color": "#ffffff", "borderColor": "#475569", "borderWidthPx": 1, "borderSides": "All", "hAlign": "left", "vAlign": "middle", "wordWrap": true },
+        { "id": "h4", "type": "Text", "name": "HdrBrans", "xMm": 88, "yMm": 0, "widthMm": 27, "heightMm": 8, "text": "Branş", "fontFamily": "Tahoma, sans-serif", "fontSizePt": 8, "bold": true, "color": "#ffffff", "borderColor": "#475569", "borderWidthPx": 1, "borderSides": "All", "hAlign": "left", "vAlign": "middle", "wordWrap": true },
+        { "id": "h5", "type": "Text", "name": "HdrEkUnvan", "xMm": 115, "yMm": 0, "widthMm": 32, "heightMm": 8, "text": "Ek Ünvan", "fontFamily": "Tahoma, sans-serif", "fontSizePt": 8, "bold": true, "color": "#ffffff", "borderColor": "#475569", "borderWidthPx": 1, "borderSides": "All", "hAlign": "left", "vAlign": "middle", "wordWrap": true },
+        { "id": "h6", "type": "Text", "name": "HdrKadro", "xMm": 147, "yMm": 0, "widthMm": 55, "heightMm": 8, "text": "Kadro Görev Yeri", "fontFamily": "Tahoma, sans-serif", "fontSizePt": 8, "bold": true, "color": "#ffffff", "borderColor": "#475569", "borderWidthPx": 1, "borderSides": "All", "hAlign": "left", "vAlign": "middle", "wordWrap": true },
+        { "id": "h7", "type": "Text", "name": "HdrFiili", "xMm": 202, "yMm": 0, "widthMm": 55, "heightMm": 8, "text": "Fiili Görev Yeri", "fontFamily": "Tahoma, sans-serif", "fontSizePt": 8, "bold": true, "color": "#ffffff", "borderColor": "#475569", "borderWidthPx": 1, "borderSides": "All", "hAlign": "left", "vAlign": "middle", "wordWrap": true },
+        { "id": "h8", "type": "Text", "name": "HdrBasTar", "xMm": 257, "yMm": 0, "widthMm": 15, "heightMm": 8, "text": "Başlangıç", "fontFamily": "Tahoma, sans-serif", "fontSizePt": 8, "bold": true, "color": "#ffffff", "borderColor": "#475569", "borderWidthPx": 1, "borderSides": "All", "hAlign": "center", "vAlign": "middle", "wordWrap": true },
+        { "id": "h9", "type": "Text", "name": "HdrBitTar", "xMm": 272, "yMm": 0, "widthMm": 15, "heightMm": 8, "text": "Bitiş", "fontFamily": "Tahoma, sans-serif", "fontSizePt": 8, "bold": true, "color": "#ffffff", "borderColor": "#475569", "borderWidthPx": 1, "borderSides": "All", "hAlign": "center", "vAlign": "middle", "wordWrap": true }
+      ]
+    },
+    {
+      "id": "spl_data",
+      "type": "Data",
+      "name": "DataSqlDataSource1",
+      "heightMm": 7,
+      "dataSource": "SqlDataSource1",
+      "backgroundColor": "transparent",
+      "evenBackgroundColor": "#f8fafc",
+      "canGrow": true,
+      "components": [
+        { "id": "d1", "type": "Text", "name": "DatTC", "xMm": 0, "yMm": 0, "widthMm": 22, "heightMm": 7, "text": "{SqlDataSource1.TCKIMLIKNO}", "fontFamily": "Arial, sans-serif", "fontSizePt": 8, "color": "#0f172a", "borderColor": "#cbd5e1", "borderWidthPx": 1, "borderSides": "All", "hAlign": "left", "vAlign": "middle", "wordWrap": true, "canGrow": true },
+        { "id": "d2", "type": "Text", "name": "DatAdSoyad", "xMm": 22, "yMm": 0, "widthMm": 32, "heightMm": 7, "text": "{SqlDataSource1.AD_SOYAD}", "fontFamily": "Arial, sans-serif", "fontSizePt": 8, "color": "#0f172a", "borderColor": "#cbd5e1", "borderWidthPx": 1, "borderSides": "All", "hAlign": "left", "vAlign": "middle", "wordWrap": true, "canGrow": true },
+        { "id": "d3", "type": "Text", "name": "DatUnvan", "xMm": 54, "yMm": 0, "widthMm": 34, "heightMm": 7, "text": "{SqlDataSource1.UNVAN}", "fontFamily": "Arial, sans-serif", "fontSizePt": 8, "color": "#0f172a", "borderColor": "#cbd5e1", "borderWidthPx": 1, "borderSides": "All", "hAlign": "left", "vAlign": "middle", "wordWrap": true, "canGrow": true },
+        { "id": "d4", "type": "Text", "name": "DatBrans", "xMm": 88, "yMm": 0, "widthMm": 27, "heightMm": 7, "text": "{SqlDataSource1.BRANS}", "fontFamily": "Arial, sans-serif", "fontSizePt": 8, "color": "#0f172a", "borderColor": "#cbd5e1", "borderWidthPx": 1, "borderSides": "All", "hAlign": "left", "vAlign": "middle", "wordWrap": true, "canGrow": true },
+        { "id": "d5", "type": "Text", "name": "DatEkUnvan", "xMm": 115, "yMm": 0, "widthMm": 32, "heightMm": 7, "text": "{SqlDataSource1.EK_UNVAN}", "fontFamily": "Arial, sans-serif", "fontSizePt": 8, "color": "#0f172a", "borderColor": "#cbd5e1", "borderWidthPx": 1, "borderSides": "All", "hAlign": "left", "vAlign": "middle", "wordWrap": true, "canGrow": true },
+        { "id": "d6", "type": "Text", "name": "DatKadro", "xMm": 147, "yMm": 0, "widthMm": 55, "heightMm": 7, "text": "{SqlDataSource1.KADRO_GOREV_YERI}", "fontFamily": "Arial, sans-serif", "fontSizePt": 8, "color": "#0f172a", "borderColor": "#cbd5e1", "borderWidthPx": 1, "borderSides": "All", "hAlign": "left", "vAlign": "middle", "wordWrap": true, "canGrow": true },
+        { "id": "d7", "type": "Text", "name": "DatFiili", "xMm": 202, "yMm": 0, "widthMm": 55, "heightMm": 7, "text": "{SqlDataSource1.FIILI_GOREV_YERI}", "fontFamily": "Arial, sans-serif", "fontSizePt": 8, "color": "#0f172a", "borderColor": "#cbd5e1", "borderWidthPx": 1, "borderSides": "All", "hAlign": "left", "vAlign": "middle", "wordWrap": true, "canGrow": true },
+        { "id": "d8", "type": "Text", "name": "DatBasTar", "xMm": 257, "yMm": 0, "widthMm": 15, "heightMm": 7, "text": "{SqlDataSource1.BAS_TAR}", "fontFamily": "Arial, sans-serif", "fontSizePt": 8, "color": "#0f172a", "borderColor": "#cbd5e1", "borderWidthPx": 1, "borderSides": "All", "hAlign": "center", "vAlign": "middle", "wordWrap": true, "canGrow": true },
+        { "id": "d9", "type": "Text", "name": "DatBitTar", "xMm": 272, "yMm": 0, "widthMm": 15, "heightMm": 7, "text": "{SqlDataSource1.BIT_TAR}", "fontFamily": "Arial, sans-serif", "fontSizePt": 8, "color": "#0f172a", "borderColor": "#cbd5e1", "borderWidthPx": 1, "borderSides": "All", "hAlign": "center", "vAlign": "middle", "wordWrap": true, "canGrow": true }
+      ]
+    },
+    {
+      "id": "spl_sum",
+      "type": "ReportSummary",
+      "name": "RaporOzeti",
+      "heightMm": 8,
+      "backgroundColor": "#eef2f9",
+      "components": [
+        {
+          "id": "s1",
+          "type": "Text",
+          "name": "TxtToplamPersonel",
+          "xMm": 2,
+          "yMm": 1,
+          "widthMm": 283,
+          "heightMm": 6,
+          "text": "Toplam {Count()} sözleşmeli personel listelendi.",
+          "fontFamily": "Segoe UI, sans-serif",
+          "fontSizePt": 8.5,
+          "bold": true,
+          "color": "#0f2744",
+          "backgroundColor": "transparent",
+          "borderWidthPx": 0,
+          "hAlign": "right",
+          "vAlign": "middle",
+          "wordWrap": false
+        }
+      ]
+    }
+  ]
+}

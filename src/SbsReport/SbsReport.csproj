@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk.Razor">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AddRazorSupportForMvc>false</AddRazorSupportForMvc>
+    <StaticWebAssetBasePath>sbs-report</StaticWebAssetBasePath>
+
+    <!-- NuGet Package Metadata -->
+    <IsPackable>true</IsPackable>
+    <PackageId>SbsReport</PackageId>
+    <Version>1.0.7</Version>
+    <Authors>Sobis</Authors>
+    <Company>Sobis</Company>
+    <Copyright>Copyright (c) 2026 Sobis</Copyright>
+    <Description>Sıfır harici bağımlılıklı, yüksek performanslı, gömülü Web Designer IDE ve Viewer destekli açık kaynak .NET raporlama motoru. Saf C# PDF 1.4 üretici, 11 dışa aktarım formatı (PDF, Excel, Word, HTML, CSV, RTF, TXT, XML, JSON, SVG, Snapshot) ve Master Form desteği sunar.</Description>
+    <PackageTags>reporting;report-engine;designer;viewer;pdf;excel;word;aspnetcore;dotnet;sbs;SbsReport;headless;wysiwyg</PackageTags>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageProjectUrl>https://github.com/iventhosting/SbsReport</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/iventhosting/SbsReport</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageReleaseNotes>Saf C# streaming PDF 1.4 motoru (TrueType font subsetting + Türkçe Windows-1254/Unicode), gömülü Web Designer IDE, 11 dışa aktarım formatı ve Master Form desteği.</PackageReleaseNotes>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="..\..\README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <EmbeddedResource Include="wwwroot\**" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="src/SbsReport/SbsReport.csproj" />
+  <Project Path="samples/SbsReport.Demo/SbsReport.Demo.csproj" />
+</Solution>

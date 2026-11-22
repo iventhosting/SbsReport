@@ -1,0 +1,1116 @@
+<!DOCTYPE html>
+<html lang="tr" data-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SbsReport — Web Designer &amp; Viewer</title>
+  <script>
+    (function () {
+      var q = new URLSearchParams(location.search);
+      var theme = q.get('theme') || localStorage.getItem('sbs-report-theme') || 'dark';
+      var lang = q.get('lang') || localStorage.getItem('sbs-report-lang') || 'tr';
+      document.documentElement.setAttribute('data-theme', theme === 'light' ? 'light' : 'dark');
+      document.documentElement.setAttribute('lang', lang === 'en' ? 'en' : 'tr');
+    })();
+  </script>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="app" class="ide-shell">
+    <!-- Top Header -->
+    <header class="topbar">
+      <div class="topbar-left">
+        <span class="brand-badge" id="brandLogoBtn" title="SbsReport Web Designer">SBS</span>
+        <span class="brand-title">SbsReport</span>
+        <span class="report-pill" id="reportNameLabel">BasvuruFormu.sbs</span>
+        <span class="dirty-dot" id="dirtyDot" data-i18n-title="unsavedChanges" hidden>●</span>
+      </div>
+
+      <div class="topbar-actions">
+        <div class="topbar-master-box" id="topbarMasterBox" title="Master Form Bağlantısı (Sabit Header & Footer)">
+          <span style="font-size:11px;font-weight:700;color:#c4b5fd;">👑</span>
+          <select id="topMasterSelect" class="rselect" style="max-width:155px;height:24px;font-size:11px;">
+            <option value="">Master: (Yok)</option>
+          </select>
+          <button id="btnTopEditMaster" class="rbtn rbtn-xs" hidden title="Bağlı Master Formu Düzenle">✏</button>
+          <button id="btnExtractMaster" class="rbtn rbtn-xs" title="Bu raporun Header & Footer bantlarını yeni Master Form olarak kaydet">⚡ Master Yap</button>
+        </div>
+        <span class="sep"></span>
+        <button id="btnQuickSave" class="btn btn-primary" data-i18n="save" data-i18n-title="saveHint">💾 Kaydet</button>
+        <button id="btnOpenModal" class="btn btn-secondary" data-i18n="reports">📂 Raporlar</button>
+        <span class="sep"></span>
+        <select id="langSelect" class="rselect" data-i18n-title="language">
+          <option value="tr">TR</option>
+          <option value="en">EN</option>
+        </select>
+        <button id="btnThemeToggle" class="btn btn-icon" data-i18n-title="toggleTheme">
+          <span class="theme-ico-dark">☾</span><span class="theme-ico-light">☀</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Ribbon Tabs & Command Bar -->
+    <nav class="ribbon" id="designerRibbon">
+      <div class="ribbon-tabs">
+        <button class="ribbon-tab tab-file" data-tab="file" data-i18n="tabFile">Dosya</button>
+        <button class="ribbon-tab active" data-tab="home" data-i18n="tabHome">Giriş</button>
+        <button class="ribbon-tab" data-tab="insert" data-i18n="tabInsert">Ekle</button>
+        <button class="ribbon-tab" data-tab="layout" data-i18n="tabLayout">Yerleşim</button>
+        <button class="ribbon-tab" data-tab="page" data-i18n="tabPage">Sayfa</button>
+        <button class="ribbon-tab tab-mode" data-tab="preview" data-i18n="tabPreview">Önizleme</button>
+        <button class="ribbon-tab tab-mode" data-tab="pdfpreview" data-i18n="tabPdfPreview">PDF Önizleme</button>
+      </div>
+      <div class="ribbon-panels">
+        <!-- File Panel -->
+        <div class="ribbon-panel" data-panel="file">
+          <button class="rbtn" id="btnNewReport" data-i18n="newReport">📄 Yeni .sbs</button>
+          <button class="rbtn" id="btnOpenModalRibbon" data-i18n="openReport">📂 Rapor Aç</button>
+          <button class="rbtn" id="btnSaveAs" data-i18n="saveAs">📝 Farklı Kaydet</button>
+          <button class="rbtn" id="btnDownloadSbs" data-i18n="downloadSbs">⬇ .sbs İndir</button>
+          <button class="rbtn" id="btnUploadSbs" data-i18n="uploadSbs">⬆ .sbs Yükle</button>
+          <input type="file" id="sbsFileInput" accept=".sbs,.json" hidden />
+        </div>
+        <!-- Home Panel (Quick Access Bar) -->
+        <div class="ribbon-panel active" data-panel="home">
+          <button class="rbtn rbtn-icon" id="btnUndo" data-i18n-title="undoHint">↶</button>
+          <button class="rbtn rbtn-icon" id="btnRedo" data-i18n-title="redoHint">↷</button>
+          <span class="sep"></span>
+          <button class="rbtn rbtn-icon" id="btnCut" data-i18n-title="cut">✂</button>
+          <button class="rbtn rbtn-icon" id="btnCopy" data-i18n-title="copy">📄</button>
+          <button class="rbtn rbtn-icon" id="btnPaste" data-i18n-title="paste">📋</button>
+          <button class="rbtn rbtn-icon" id="btnFormatPainter" data-i18n-title="formatPainter">🖌</button>
+          <button class="rbtn rbtn-icon" id="tbDeleteComp" data-i18n-title="delete">🗑</button>
+          <span class="sep"></span>
+          <!-- Font Family & Size -->
+          <select id="tbFontFamily" class="rselect rselect-font" data-i18n-title="fontFamily">
+            <option value="Segoe UI, Inter, sans-serif">Segoe UI</option>
+            <option value="Arial, sans-serif">Arial</option>
+            <option value="Calibri, sans-serif">Calibri</option>
+            <option value="Tahoma, sans-serif">Tahoma</option>
+            <option value="Verdana, sans-serif">Verdana</option>
+            <option value="Trebuchet MS, sans-serif">Trebuchet MS</option>
+            <option value="Inter, Arial, sans-serif">Inter</option>
+            <option value="Times New Roman, serif">Times New Roman</option>
+            <option value="Georgia, serif">Georgia</option>
+            <option value="Cambria, serif">Cambria</option>
+            <option value="Courier New, monospace">Courier New</option>
+            <option value="Consolas, monospace">Consolas</option>
+            <option value="Aharoni, sans-serif">Aharoni</option>
+          </select>
+          <select id="tbFontSize" class="rselect rselect-size" data-i18n-title="fontSize">
+            <option value="6">6</option>
+            <option value="7">7</option>
+            <option value="8">8</option>
+            <option value="8.5">8.5</option>
+            <option value="9">9</option>
+            <option value="9.5">9.5</option>
+            <option value="10" selected>10</option>
+            <option value="11">11</option>
+            <option value="12">12</option>
+            <option value="14">14</option>
+            <option value="16">16</option>
+            <option value="18">18</option>
+            <option value="20">20</option>
+            <option value="24">24</option>
+            <option value="28">28</option>
+            <option value="32">32</option>
+            <option value="48">48</option>
+          </select>
+          <button class="rbtn rbtn-icon" id="tbBold" data-i18n-title="bold"><b data-i18n="boldShort">K</b></button>
+          <button class="rbtn rbtn-icon" id="tbItalic" data-i18n-title="italic"><i data-i18n="italicShort">T</i></button>
+          <button class="rbtn rbtn-icon" id="tbUnderline" data-i18n-title="underline"><u data-i18n="underlineShort">A</u></button>
+          <button class="rbtn rbtn-icon" id="tbStrike" data-i18n-title="strike"><s data-i18n="strikeShort">S</s></button>
+          <span class="sep"></span>
+          <!-- Color & Borders -->
+          <label class="rcolor" data-i18n-title="textColor">A <input type="color" id="tbColor" value="#111827" /></label>
+          <label class="rcolor" data-i18n-title="backColor">■ <input type="color" id="tbBgColor" value="#ffffff" /></label>
+          <select id="tbBorders" class="rselect" data-i18n-title="borders">
+            <option value="All" data-i18n="borderAll">田 Tüm Kenarlıklar</option>
+            <option value="Box" data-i18n="borderBox">口 Dış Çerçeve</option>
+            <option value="Top" data-i18n="borderTop">▔ Üst</option>
+            <option value="Bottom" data-i18n="borderBottom">  Alt</option>
+            <option value="Left" data-i18n="borderLeft">▏ Sol</option>
+            <option value="Right" data-i18n="borderRight">▕ Sağ</option>
+            <option value="None" data-i18n="borderNone">✕ Kenarlık Yok</option>
+          </select>
+          <span class="sep"></span>
+          <!-- Alignment -->
+          <button class="rbtn rbtn-icon" id="tbAlignLeft" data-i18n-title="alignLeft">⫤</button>
+          <button class="rbtn rbtn-icon" id="tbAlignCenter" data-i18n-title="alignCenter">⫶</button>
+          <button class="rbtn rbtn-icon" id="tbAlignRight" data-i18n-title="alignRight">⫥</button>
+          <button class="rbtn rbtn-icon" id="tbAlignJustify" data-i18n-title="alignJustify">≡</button>
+          <span class="sep"></span>
+          <button class="rbtn rbtn-icon" id="tbAlignTop" data-i18n-title="alignTop">⤒</button>
+          <button class="rbtn rbtn-icon" id="tbAlignMiddle" data-i18n-title="alignMiddle">↕</button>
+          <button class="rbtn rbtn-icon" id="tbAlignBottom" data-i18n-title="alignBottom">⤓</button>
+          <span class="sep"></span>
+          <button class="rbtn rbtn-icon" id="tbWordWrap" data-i18n-title="wordWrap">⏎</button>
+          <button class="rbtn" id="tbCanGrow" title="Otomatik Büyü (CanGrow)">↕ Büyü</button>
+          <span class="sep"></span>
+          <button class="rbtn" id="btnOpenTextFormat" title="Metin Biçimi"># Biçim</button>
+          <button class="rbtn" id="btnOpenConditions" title="Koşullu Biçimlendirme">🎨 Koşullar</button>
+        </div>
+        <!-- Insert Panel -->
+        <div class="ribbon-panel" data-panel="insert">
+          <button class="rbtn" data-add-comp="Text" data-i18n="compText">🔤 Metin</button>
+          <button class="rbtn" data-add-comp="Input" data-i18n="compInput">📝 Giriş Kutusu</button>
+          <button class="rbtn" data-add-comp="CheckBox" data-i18n="compCheckBox">☑ Onay Kutusu</button>
+          <button class="rbtn" data-add-comp="Radio" data-i18n="compRadio">⦿ Radyo Buton</button>
+          <button class="rbtn" data-add-comp="ComboBox" data-i18n="compComboBox">▼ Açılır Liste</button>
+          <button class="rbtn" data-add-comp="DatePicker" data-i18n="compDatePicker">📅 Tarih Kutusu</button>
+          <button class="rbtn" data-add-comp="Signature" data-i18n="compSignature">✍ İmza</button>
+          <button class="rbtn" data-add-comp="Button" data-i18n="compButton">🔲 Buton</button>
+          <button class="rbtn" data-add-comp="Shape" data-i18n="compShape">⬜ Şekil</button>
+          <button class="rbtn" data-add-comp="Line" data-i18n="compLine">➖ Çizgi</button>
+          <button class="rbtn" data-add-comp="Image" data-i18n="compImage">🖼 Görsel</button>
+          <button class="rbtn" data-add-comp="Barcode" data-i18n="compBarcode">▮▯ Barkod</button>
+          <button class="rbtn" data-add-comp="Chart" data-i18n="compChart">📊 Grafik</button>
+          <button class="rbtn" data-add-comp="Table" data-i18n="compTable">田 Tablo</button>
+          <button class="rbtn" data-add-comp="Panel" data-i18n="compPanel">⧉ Panel</button>
+          <span class="sep"></span>
+          <button class="rbtn" data-add-band="ReportTitle" data-i18n="bandReportTitle">+ Rapor Başlığı</button>
+          <button class="rbtn" data-add-band="PageHeader" data-i18n="bandPageHeader">+ Sayfa Üstbilgisi</button>
+          <button class="rbtn" data-add-band="Header" data-i18n="bandHeader">+ Tablo Başlığı</button>
+          <button class="rbtn" data-add-band="GroupHeader" data-i18n="bandGroupHeader">+ Grup Başlığı</button>
+          <button class="rbtn" data-add-band="Data" data-i18n="bandData">+ Veri Bandı</button>
+          <button class="rbtn" data-add-band="GroupFooter" data-i18n="bandGroupFooter">+ Grup Altı</button>
+          <button class="rbtn" data-add-band="Footer" data-i18n="bandFooter">+ Tablo Altı</button>
+          <button class="rbtn" data-add-band="ReportSummary" data-i18n="bandReportSummary">+ Rapor Özeti</button>
+          <button class="rbtn" data-add-band="PageFooter" data-i18n="bandPageFooter">+ Sayfa Altbilgisi</button>
+        </div>
+        <!-- Layout Panel -->
+        <div class="ribbon-panel" data-panel="layout">
+          <button class="rbtn" data-align="left" data-i18n="alLeft">⇤ Sol</button>
+          <button class="rbtn" data-align="hcenter" data-i18n="alHCenter">↔ Yatay Orta</button>
+          <button class="rbtn" data-align="right" data-i18n="alRight">⇥ Sağ</button>
+          <button class="rbtn" data-align="top" data-i18n="alTop">⤒ Üst</button>
+          <button class="rbtn" data-align="vcenter" data-i18n="alVCenter">↕ Dikey Orta</button>
+          <button class="rbtn" data-align="bottom" data-i18n="alBottom">⤓ Alt</button>
+          <span class="sep"></span>
+          <button class="rbtn" data-align="samewidth" data-i18n="alSameWidth">Aynı Genişlik</button>
+          <button class="rbtn" data-align="sameheight" data-i18n="alSameHeight">Aynı Yükseklik</button>
+          <button class="rbtn" data-align="samesize" data-i18n="alSameSize">Aynı Boyut</button>
+          <button class="rbtn" data-align="hdist" data-i18n="alHDist">Yatay Dağıt</button>
+          <button class="rbtn" data-align="vdist" data-i18n="alVDist">Dikey Dağıt</button>
+          <span class="sep"></span>
+          <button class="rbtn" data-align="front" data-i18n="bringFront">Öne Getir</button>
+          <button class="rbtn" data-align="back" data-i18n="sendBack">Arkaya Gönder</button>
+        </div>
+        <!-- Page Panel -->
+        <div class="ribbon-panel" data-panel="page">
+          <label class="rfield"><span data-i18n="paper">Kağıt</span>:
+            <select id="pgPaperSize" class="rselect">
+              <option value="A4">A4 (210×297 mm)</option>
+              <option value="A5">A5 (148×210 mm)</option>
+              <option value="Letter">Letter (216×279 mm)</option>
+            </select>
+          </label>
+          <label class="rfield"><span data-i18n="orientation">Yön</span>:
+            <select id="pgOrientation" class="rselect">
+              <option value="Portrait" data-i18n="portrait">Dikey</option>
+              <option value="Landscape" data-i18n="landscape">Yatay</option>
+            </select>
+          </label>
+          <label class="rfield"><span data-i18n="gridMm">Izgara (mm)</span>:
+            <input type="number" id="pgGridSize" class="rinput-sm" value="2" min="1" max="10" />
+          </label>
+          <label class="rfield"><input type="checkbox" id="pgShowGrid" checked /> <span data-i18n="showGrid">Izgarayı Göster</span></label>
+          <label class="rfield"><input type="checkbox" id="pgSnapToGrid" checked /> <span data-i18n="snapToGrid">Yapış</span></label>
+          <span class="sep"></span>
+          <label class="rfield"><input type="checkbox" id="pgWatermarkEnable" /> <span data-i18n="watermark">Filigran</span></label>
+          <input type="text" id="pgWatermarkText" class="rselect" style="width:100px;" value="Trial" placeholder="Filigran metni" />
+          <span class="sep"></span>
+          <label class="rfield"><span data-i18n="masterForm">👑 Master Form</span>:
+            <select id="pgMasterReport" class="rselect" style="max-width:165px;">
+              <option value="">(Yok / Bağımsız)</option>
+            </select>
+          </label>
+          <button id="btnOpenMaster" class="rbtn" hidden data-i18n="editMaster" title="Master Formu Düzenle">✏ Master'ı Aç</button>
+          <label class="rfield" title="Bu raporu diğer raporların miras alabileceği Master Şablon olarak işaretle">
+            <input type="checkbox" id="pgIsMaster" /> <span data-i18n="isMasterTemplate">Master Şablon</span>
+          </label>
+        </div>
+      </div>
+    </nav>
+
+    <!-- Preview Toolbar (When Preview or PDF Preview is active) -->
+    <div class="preview-bar" id="previewBar" hidden>
+      <div class="preview-nav">
+        <button class="rbtn" id="btnPrevPage" data-i18n="prevPage">◀ Önceki</button>
+        <span id="pageIndicator">-</span>
+        <button class="rbtn" id="btnNextPage" data-i18n="nextPage">Sonraki ▶</button>
+      </div>
+      <div class="preview-meta">
+        <span class="perf-badge" id="renderPerfBadge">⚡ 0 ms</span>
+        <button class="rbtn" id="btnRefreshPreview" data-i18n="refresh">🔄 Yenile</button>
+        <button class="btn btn-primary" id="btnPrintPdf" data-i18n="printPdf">🖨 Yazdır</button>
+        <select id="selExportFormat" class="rselect" style="font-weight:600;" title="Dışa Aktar (Çoklu Format)">
+          <option value="">💾 Dışa Aktar (Export) ▾</option>
+          <option value="pdf">📄 PDF Belgesi (.pdf)</option>
+          <option value="xlsx">📊 Microsoft Excel (.xls)</option>
+          <option value="docx">📝 Microsoft Word (.doc)</option>
+          <option value="html">🌐 HTML5 Sayfası (.html)</option>
+          <option value="csv">📋 CSV Tablo (.csv)</option>
+          <option value="xml">🗂 XML Verisi (.xml)</option>
+          <option value="json">{} JSON Verisi (.json)</option>
+          <option value="svg">🖼 Vektör Görsel (.svg)</option>
+          <option value="rtf">📄 Zengin Metin (.rtf)</option>
+          <option value="txt">📃 Düz Metin (.txt)</option>
+          <option value="sbsdoc">📦 Rapor Snapshot (.sbsdoc)</option>
+        </select>
+        <button class="rbtn" id="btnExportExcel" data-i18n="exportExcel">📊 Excel</button>
+        <button class="rbtn" id="btnExportHtml" data-i18n="exportHtml">🌐 HTML</button>
+        <button class="rbtn" id="btnReturnToDesign" style="margin-left:6px;">✕ Tasarıma Dön</button>
+      </div>
+    </div>
+
+    <!-- Main Workspace (3-pane layout) -->
+    <main class="ide-body">
+      <!-- 1. Left Slim Tool Ribbon (Vertical Component Palette) -->
+      <aside class="slim-tool-ribbon" id="leftToolRibbon">
+        <!-- Pointer -->
+        <button class="tool-btn active" data-tool="pointer" id="toolPointerBtn" data-i18n-title="toolPointer">
+          <span class="t-icon">↖</span>
+        </button>
+        <div class="tool-sep"></div>
+
+        <!-- Bands Group -->
+        <div class="tool-group" id="tgBands">
+          <button class="tool-btn tg-trigger" data-i18n-title="toolBands">
+            <span class="t-icon">≡</span><span class="tg-arrow">▸</span>
+          </button>
+          <div class="tool-flyout" id="flyBands">
+            <div class="flyout-head" data-i18n="toolBands">Band'lar</div>
+            <div class="flyout-item" data-add-band="PageHeader"><span class="b-dot b-dot-PageHeader"></span><span data-i18n="bandPageHeader">Sayfa Başlığı</span></div>
+            <div class="flyout-item" data-add-band="PageFooter"><span class="b-dot b-dot-PageFooter"></span><span data-i18n="bandPageFooter">Sayfa Altbilgisi</span></div>
+            <div class="flyout-item" data-add-band="ReportTitle"><span class="b-dot b-dot-ReportTitle"></span><span data-i18n="bandReportTitle">Rapor Adı</span></div>
+            <div class="flyout-item" data-add-band="ReportSummary"><span class="b-dot b-dot-ReportSummary"></span><span data-i18n="bandReportSummary">Rapor Özeti</span></div>
+            <div class="flyout-item" data-add-band="Header"><span class="b-dot b-dot-Header"></span><span data-i18n="bandHeader">Header</span></div>
+            <div class="flyout-item" data-add-band="Footer"><span class="b-dot b-dot-Footer"></span><span data-i18n="bandFooter">Footer</span></div>
+            <div class="flyout-item" data-add-band="GroupHeader"><span class="b-dot b-dot-GroupHeader"></span><span data-i18n="bandGroupHeader">Grup Başlık</span></div>
+            <div class="flyout-item" data-add-band="GroupFooter"><span class="b-dot b-dot-GroupFooter"></span><span data-i18n="bandGroupFooter">Grup Footer</span></div>
+            <div class="flyout-item" data-add-band="ColumnHeader"><span class="b-dot b-dot-ColumnHeader"></span><span data-i18n="bandColumnHeader">Baş Sütun</span></div>
+            <div class="flyout-item" data-add-band="ColumnFooter"><span class="b-dot b-dot-ColumnFooter"></span><span data-i18n="bandColumnFooter">Alt Sütun</span></div>
+            <div class="flyout-item" data-add-band="Data"><span class="b-dot b-dot-Data"></span><span data-i18n="bandData">Veri</span></div>
+            <div class="flyout-item" data-add-band="Table"><span class="b-dot b-dot-Table"></span><span data-i18n="bandTable">Tablo</span></div>
+            <div class="flyout-item" data-add-band="HierarchicalData"><span class="b-dot b-dot-HierarchicalData"></span><span data-i18n="bandHierarchical">Hiyerarşik Veri</span></div>
+            <div class="flyout-item" data-add-band="ChildBand"><span class="b-dot b-dot-ChildBand"></span><span data-i18n="bandChildBand">Çocuk Band</span></div>
+            <div class="flyout-item" data-add-band="EmptyBand"><span class="b-dot b-dot-EmptyBand"></span><span data-i18n="bandEmptyBand">Boş veri</span></div>
+            <div class="flyout-item" data-add-band="Overlay"><span class="b-dot b-dot-Overlay"></span><span data-i18n="bandOverlay">Overlay</span></div>
+          </div>
+        </div>
+
+        <!-- Text/Memo Group -->
+        <div class="tool-group" id="tgText">
+          <button class="tool-btn tg-trigger" data-i18n-title="toolText">
+            <span class="t-icon">T</span><span class="tg-arrow">▸</span>
+          </button>
+          <div class="tool-flyout" id="flyText">
+            <div class="flyout-head" data-i18n="toolText">Metinler</div>
+            <div class="flyout-item" data-tool-act="Text"><span class="t-icon-sm">T</span><span data-i18n="toolText">Metin</span></div>
+            <div class="flyout-item" data-tool-act="Input"><span class="t-icon-sm">[ab]</span><span data-i18n="toolInput">Giriş Alanı</span></div>
+            <div class="flyout-item" data-tool-act="RichText"><span class="t-icon-sm">≣</span><span data-i18n="toolRichText">RichText</span></div>
+            <div class="flyout-item" data-tool-act="SystemText"><span class="t-icon-sm">⚙T</span><span data-i18n="toolSystemText">Sistem Metin</span></div>
+          </div>
+        </div>
+
+        <!-- Form Controls Group -->
+        <div class="tool-group" id="tgForms">
+          <button class="tool-btn tg-trigger" data-i18n-title="toolForms">
+            <span class="t-icon">☑</span><span class="tg-arrow">▸</span>
+          </button>
+          <div class="tool-flyout" id="flyForms">
+            <div class="flyout-head" data-i18n="toolForms">Form Kontrolleri</div>
+            <div class="flyout-item" data-tool-act="CheckBox"><span class="t-icon-sm">☑</span><span data-i18n="toolCheckBox">Onay Kutusu</span></div>
+            <div class="flyout-item" data-tool-act="Radio"><span class="t-icon-sm">⦿</span><span data-i18n="toolRadio">Radyo Düğmesi</span></div>
+            <div class="flyout-item" data-tool-act="ComboBox"><span class="t-icon-sm">▼</span><span data-i18n="toolComboBox">Açılır Liste</span></div>
+            <div class="flyout-item" data-tool-act="DatePicker"><span class="t-icon-sm">📅</span><span data-i18n="toolDatePicker">Tarih Seçici</span></div>
+            <div class="flyout-item" data-tool-act="Signature"><span class="t-icon-sm">✍</span><span data-i18n="toolSignature">İmza</span></div>
+            <div class="flyout-item" data-tool-act="Button"><span class="t-icon-sm">🔲</span><span data-i18n="toolButton">Düğme</span></div>
+          </div>
+        </div>
+
+        <!-- Shapes Group -->
+        <div class="tool-group" id="tgShapes">
+          <button class="tool-btn tg-trigger" data-i18n-title="toolShape">
+            <span class="t-icon">▭</span><span class="tg-arrow">▸</span>
+          </button>
+          <div class="tool-flyout" id="flyShapes">
+            <div class="flyout-head" data-i18n="toolShape">Şekiller</div>
+            <div class="flyout-item" data-tool-act="Shape" data-shape-type="Rectangle"><span class="t-icon-sm">▭</span><span data-i18n="shapeRect">Dikdörtgen</span></div>
+            <div class="flyout-item" data-tool-act="Shape" data-shape-type="RoundedRectangle"><span class="t-icon-sm">▢</span><span data-i18n="shapeRoundRect">Yuvarlak Köşeli</span></div>
+            <div class="flyout-item" data-tool-act="Shape" data-shape-type="Ellipse"><span class="t-icon-sm">⬭</span><span data-i18n="shapeEllipse">Elips</span></div>
+            <div class="flyout-item" data-tool-act="Shape" data-shape-type="Triangle"><span class="t-icon-sm">△</span><span data-i18n="shapeTriangle">Üçgen</span></div>
+            <div class="flyout-item" data-tool-act="Line" data-line-orient="Horizontal"><span class="t-icon-sm">―</span><span data-i18n="lineHorizontal">Yatay Çizgi</span></div>
+            <div class="flyout-item" data-tool-act="Line" data-line-orient="Vertical"><span class="t-icon-sm">|</span><span data-i18n="lineVertical">Dikey Çizgi</span></div>
+          </div>
+        </div>
+
+        <!-- Media / Barcode / Chart Group -->
+        <div class="tool-group" id="tgMedia">
+          <button class="tool-btn tg-trigger" data-i18n-title="toolBarcode">
+            <span class="t-icon">▮▯</span><span class="tg-arrow">▸</span>
+          </button>
+          <div class="tool-flyout" id="flyMedia">
+            <div class="flyout-head" data-i18n="toolMedia">Medya &amp; Grafikler</div>
+            <div class="flyout-item" data-tool-act="Barcode" data-barcode-fmt="Code128"><span class="t-icon-sm">▮▯</span><span data-i18n="barcodeCode128">Barkod (Code128)</span></div>
+            <div class="flyout-item" data-tool-act="Barcode" data-barcode-fmt="EAN13"><span class="t-icon-sm">▮▮</span><span data-i18n="barcodeEan13">Barkod (EAN-13)</span></div>
+            <div class="flyout-item" data-tool-act="Barcode" data-barcode-fmt="QR"><span class="t-icon-sm">⬛</span><span data-i18n="toolQR">QR Kod</span></div>
+            <div class="flyout-item" data-tool-act="Chart" data-chart-type="Bar"><span class="t-icon-sm">📊</span><span data-i18n="chartBar">Grafik (Çubuk)</span></div>
+            <div class="flyout-item" data-tool-act="Chart" data-chart-type="Line"><span class="t-icon-sm">📈</span><span data-i18n="chartLine">Grafik (Çizgi)</span></div>
+            <div class="flyout-item" data-tool-act="Chart" data-chart-type="Pie"><span class="t-icon-sm">🥧</span><span data-i18n="chartPie">Grafik (Pasta)</span></div>
+            <div class="flyout-item" data-tool-act="Image"><span class="t-icon-sm">🖼</span><span data-i18n="toolImage">Resim</span></div>
+          </div>
+        </div>
+
+        <!-- Table / CrossTab / Panel Group -->
+        <div class="tool-group" id="tgTable">
+          <button class="tool-btn tg-trigger" data-i18n-title="toolTable">
+            <span class="t-icon">田</span><span class="tg-arrow">▸</span>
+          </button>
+          <div class="tool-flyout" id="flyTable">
+            <div class="flyout-head" data-i18n="toolTable">Tablo &amp; Panel</div>
+            <div class="flyout-item" data-tool-act="Table"><span class="t-icon-sm">田</span><span data-i18n="toolTable">Tablo</span></div>
+            <div class="flyout-item" data-tool-act="CrossTab"><span class="t-icon-sm">⊞</span><span data-i18n="toolCrossTab">Çapraz Tablo</span></div>
+            <div class="flyout-item" data-tool-act="Panel"><span class="t-icon-sm">⧉</span><span data-i18n="toolPanel">Panel</span></div>
+          </div>
+        </div>
+
+        <div class="tool-sep"></div>
+        <button class="tool-btn" id="btnQuickWatermark" data-i18n-title="toolWatermark">
+          <span class="t-icon">W</span>
+        </button>
+        <button class="tool-btn" id="btnToggleSideDock" data-i18n-title="toolDock">
+          <span class="t-icon">🗄</span>
+        </button>
+      </aside>
+
+      <!-- Optional Collapsible Auxiliary Dock (Dictionary & Tree) -->
+      <aside class="sidebar-dock" id="auxDock" hidden>
+        <div class="dock-tabs">
+          <button class="dock-tab active" data-dock="dictionary" data-i18n="sideDictionary">Sözlük</button>
+          <button class="dock-tab" data-dock="tree" data-i18n="sideTree">Form Ağacı</button>
+          <button class="dock-close" id="btnCloseDock">✕</button>
+        </div>
+        <div class="dock-content">
+          <div class="dock-pane active" data-pane="dictionary">
+            <div class="pane-head">
+              <div class="pane-title" data-i18n="dataSources">Veri Kaynakları</div>
+              <button id="btnAddDataSource" class="rbtn rbtn-xs" data-i18n="addJson">+ JSON</button>
+            </div>
+            <div id="dictionaryTree" class="dict-tree"></div>
+            <div class="pane-title" style="margin-top:14px;" data-i18n="systemVariables">Sistem Değişkenleri</div>
+            <div class="dict-vars">
+              <div class="dict-col" draggable="true" data-expr="{PageNumber}">{PageNumber}</div>
+              <div class="dict-col" draggable="true" data-expr="{TotalPageCount}">{TotalPageCount}</div>
+              <div class="dict-col" draggable="true" data-expr="{Today}">{Today}</div>
+              <div class="dict-col" draggable="true" data-expr="{Now}">{Now}</div>
+              <div class="dict-col" draggable="true" data-expr="{Line}">{Line}</div>
+            </div>
+          </div>
+          <div class="dock-pane" data-pane="tree">
+            <div class="pane-title" data-i18n="reportStructure">Rapor Yapısı</div>
+            <div id="reportTree" class="report-tree"></div>
+          </div>
+        </div>
+      </aside>
+
+      <!-- 2. Center Canvas Viewport -->
+      <section class="canvas-viewport" id="canvasViewport">
+        <!-- Canvas Document Tabs (Page 1 | Page 2 | + | Önizleme | PDF) -->
+        <div class="canvas-doc-tabs" id="canvasDocTabs">
+          <div id="pageTabsContainer" style="display:inline-flex;align-items:flex-end;gap:2px;">
+            <button class="cdoc-tab cdoc-active" id="tabDocPage1" data-doctab="design" data-page-idx="0">
+              <span class="cdoc-ico">📄</span> <span class="cdoc-lbl">Page 1</span>
+            </button>
+          </div>
+          <button class="cdoc-tab" id="btnAddReportPage" title="Yeni Sayfa Ekle (+)" style="padding:0 8px;font-weight:800;">＋</button>
+          <span class="sep" style="height:14px;margin:0 4px 4px;"></span>
+          <button class="cdoc-tab" id="tabDocPreview" data-doctab="preview">
+            <span class="cdoc-ico">🔍</span> <span class="cdoc-lbl" data-i18n="tabPreview">Önizleme</span>
+          </button>
+          <button class="cdoc-tab" id="tabDocPdf" data-doctab="pdfpreview">
+            <span class="cdoc-ico">🌐</span> <span class="cdoc-lbl" data-i18n="tabPdfPreview">PDF Önizleme</span>
+          </button>
+        </div>
+        <!-- Master Form Mode Indicator Banner -->
+        <div class="master-mode-banner" id="masterModeBanner" hidden>
+          <span>👑 <b>MASTER FORM TASARIM MODU</b> — Buradaki <u>PageHeader</u> ve <u>PageFooter</u> bantları bu Master'ı kullanan tüm raporlara sabit olarak eklenir.</span>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <button type="button" id="btnReturnFromMaster" class="rbtn rbtn-xs" hidden style="background:#ffffff;color:#4c1d95;font-weight:700;">← Rapora Dön</button>
+            <span style="opacity:.85;font-size:10.5px;">Orta alan çocuk raporlar tarafından doldurulur</span>
+          </div>
+        </div>
+        <div id="designerStage" class="designer-stage">
+          <div class="ruler-layout">
+            <div class="ruler-corner">mm</div>
+            <div id="rulerTop" class="ruler-top"></div>
+            <div id="rulerLeft" class="ruler-left"></div>
+            <div id="pageSheetWrapper" class="page-sheet-wrapper">
+              <div id="pageSheet" class="page-sheet">
+                <!-- Corner crop marks & watermark render dynamically inside pageSheet -->
+              </div>
+            </div>
+          </div>
+        </div>
+        <div id="previewStage" class="preview-stage" hidden></div>
+      </section>
+
+      <!-- 3. Right Sidebar (Property Inspector) -->
+      <aside class="sidebar-right" id="rightSidebar">
+        <!-- Top Component Selector Dropdown (e.g. Form : Form, InpFullName : Input) -->
+        <div class="inspector-header">
+          <select id="inspectorTargetSelect" class="inspector-select" title="Bileşen Seç">
+            <option value="__form__">Form : Form</option>
+          </select>
+          <div class="inspector-view-modes">
+            <button id="btnViewCategorized" class="iv-btn active" data-i18n-title="viewCategorized">🗂</button>
+            <button id="btnViewAlphabetical" class="iv-btn" data-i18n-title="viewAlphabetical">🔤</button>
+          </div>
+        </div>
+        <div class="inspector-filter-box">
+          <input type="text" id="inspectorFilterInput" class="rinput" data-i18n-placeholder="propFilter" placeholder="Özellikleri filtrele..." />
+        </div>
+
+        <!-- Property Grid Content -->
+        <div id="propertiesPanel" class="prop-body"></div>
+
+        <!-- Inspector Tree Pane (when Form Tree tab is selected) -->
+        <div id="inspectorTreePanel" class="prop-body" hidden>
+          <div id="inspectorTreeContent" class="report-tree"></div>
+        </div>
+
+        <!-- Inspector Dictionary Pane (when Dictionary tab is selected) -->
+        <div id="inspectorDictPanel" class="prop-body" style="padding:0;" hidden>
+          <div class="dict-toolbar">
+            <button id="btnAddDataSourceRight" class="btn btn-primary rbtn-xs">+ Veri Kaynağı</button>
+            <button id="btnAddVariableRight" class="rbtn rbtn-xs">+ Değişken</button>
+          </div>
+          <div style="padding:8px;">
+            <div class="pane-title" data-i18n="dataSources">Veri Kaynakları</div>
+            <div id="inspectorDictContent" class="dict-tree"></div>
+            <div class="pane-title" style="margin-top:12px;">Rapor Değişkenleri / Parametreler</div>
+            <div id="inspectorVarsContent" class="dict-vars"></div>
+            <div class="pane-title" style="margin-top:12px;" data-i18n="systemVariables">Sistem Değişkenleri</div>
+            <div class="dict-vars">
+              <div class="dict-col" draggable="true" data-expr="{PageNumber}">{PageNumber}</div>
+              <div class="dict-col" draggable="true" data-expr="{TotalPageCount}">{TotalPageCount}</div>
+              <div class="dict-col" draggable="true" data-expr="{Today}">{Today}</div>
+              <div class="dict-col" draggable="true" data-expr="{Now}">{Now}</div>
+              <div class="dict-col" draggable="true" data-expr="{Line}">{Line}</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Bottom Tabs: Properties / Form Tree / Dictionary -->
+        <div class="inspector-bottom-tabs">
+          <button class="ib-tab active" data-ib="properties" data-i18n="properties">Özellikler</button>
+          <button class="ib-tab" data-ib="tree" data-i18n="sideTree">Form Ağacı</button>
+          <button class="ib-tab" data-ib="dictionary" data-i18n="sideDictionary">Sözlük</button>
+        </div>
+      </aside>
+    </main>
+
+    <!-- Bottom Status Bar -->
+    <footer class="statusbar">
+      <div class="status-left">
+        <span class="status-badge-ok" id="statusBadge">✓ 0</span>
+        <span id="statusText">Hazır — SbsReport Designer</span>
+      </div>
+      <div class="status-center">
+        <span id="statusGeometry" class="status-geo">X: 0 mm, Y: 0 mm | W: 0 mm, H: 0 mm</span>
+      </div>
+      <div class="status-right">
+        <div class="zoom-controls">
+          <button id="btnZoomOut" class="zbtn" title="Uzaklaştır">−</button>
+          <input type="range" id="zoomSlider" min="20" max="250" value="100" class="zoom-range" />
+          <span id="zoomLabel">100%</span>
+          <button id="btnZoomIn" class="zbtn" title="Yakınlaştır">+</button>
+          <button id="btnZoomFit" class="zbtn zbtn-fit" title="Sayfaya Sığdır">⊡</button>
+        </div>
+      </div>
+    </footer>
+  </div>
+
+  <!-- New Report Template Gallery Modal -->
+  <div id="templateModal" class="modal-backdrop" hidden>
+    <div class="modal-card modal-wide">
+      <div class="modal-head">
+        <h3 data-i18n="templateGallery">Yeni Rapor Şablonları</h3>
+        <button id="btnCloseTemplateModal" class="modal-close">✕</button>
+      </div>
+      <div class="template-grid">
+        <div class="tpl-card active" data-tpl="BasvuruFormu">
+          <div class="tpl-thumb tpl-thumb-form">
+            <div class="tpl-banner">✦ EXAMPLE, INC.</div>
+            <div class="tpl-line lg"></div>
+            <div class="tpl-line sm"></div>
+            <div class="tpl-row"><div class="tpl-box"></div><div class="tpl-box"></div></div>
+          </div>
+          <div class="tpl-title" data-i18n="tplApplicationForm">Başvuru Formu (PDF Form)</div>
+          <div class="tpl-desc" data-i18n="tplApplicationFormDesc">Zengin PDF form kontrolleri, lacivert başlık ve filigran içeren başvuru formu.</div>
+        </div>
+
+        <div class="tpl-card" data-tpl="HastaMuayeneRaporu">
+          <div class="tpl-thumb tpl-thumb-med">
+            <div class="tpl-banner med">SOBİS SAĞLIK GRUBU</div>
+            <div class="tpl-row"><div class="tpl-box"></div><div class="tpl-box"></div></div>
+            <div class="tpl-grid-lines"></div>
+          </div>
+          <div class="tpl-title" data-i18n="tplMedical">Hasta Muayene ve Tedavi Raporu</div>
+          <div class="tpl-desc" data-i18n="tplMedicalDesc">Sobis HBYS standardı: Hasta kimlik kartı, vital bulgular, ICD-10 tanı, reçete, QR kod ve hekim kaşesi.</div>
+        </div>
+
+        <div class="tpl-card" data-tpl="SatisFaturasi">
+          <div class="tpl-thumb tpl-thumb-inv">
+            <div class="tpl-banner inv">e-ARŞİV FATURA</div>
+            <div class="tpl-line sm"></div>
+            <div class="tpl-table-mock"></div>
+          </div>
+          <div class="tpl-title" data-i18n="tplInvoice">E-Arşiv &amp; Ticari Satış Faturası</div>
+          <div class="tpl-desc" data-i18n="tplInvoiceDesc">Kurumsal başlık, müşteri detayları, KDV hesaplamalı kalemler tablosu ve e-fatura karekodu.</div>
+        </div>
+
+        <div class="tpl-card" data-tpl="UrunStokRaporu">
+          <div class="tpl-thumb tpl-thumb-stock">
+            <div class="tpl-banner stock">ÜRÜN &amp; STOK LİSTESİ</div>
+            <div class="tpl-group-bar"></div>
+            <div class="tpl-chart-bar"></div>
+          </div>
+          <div class="tpl-title" data-i18n="tplStock">Ürün &amp; Stok Raporu (Gruplu)</div>
+          <div class="tpl-desc" data-i18n="tplStockDesc">Kategori bazında gruplanmış ürünler, ara toplamlar, kritik stok koşullu renklendirmesi ve grafik.</div>
+        </div>
+
+        <div class="tpl-card" data-tpl="BosForm">
+          <div class="tpl-thumb tpl-thumb-blank">
+            <div class="tpl-blank-grid"></div>
+          </div>
+          <div class="tpl-title" data-i18n="tplBlankForm">Boş PDF Formu</div>
+          <div class="tpl-desc" data-i18n="tplBlankFormDesc">Bandsız, serbest form kontrolleri yerleştirmeye hazır boş sayfa.</div>
+        </div>
+
+        <div class="tpl-card" data-tpl="BosRapor">
+          <div class="tpl-thumb tpl-thumb-blank">
+            <div class="tpl-blank-bands"></div>
+          </div>
+          <div class="tpl-title" data-i18n="tplBlankReport">Boş Rapor</div>
+          <div class="tpl-desc" data-i18n="tplBlankReportDesc">Rapor başlığı, veri bandı ve sayfa altbilgisi içeren boş şablon.</div>
+        </div>
+
+        <div class="tpl-card" data-tpl="MasterForm">
+          <div class="tpl-thumb tpl-thumb-form">
+            <div class="tpl-banner" style="background:#7c3aed;">👑 MASTER FORM</div>
+            <div class="tpl-line lg" style="opacity:.35;"></div>
+            <div class="tpl-line sm" style="opacity:.35;"></div>
+            <div class="tpl-banner" style="margin-top:auto;background:#475569;font-size:7px;">SABİT ALT BİLGİ</div>
+          </div>
+          <div class="tpl-title" data-i18n="tplMasterForm">Master Form (Sabit Header &amp; Footer)</div>
+          <div class="tpl-desc" data-i18n="tplMasterFormDesc">Diğer raporların miras alacağı sabit kurumsal üstbilgi ve altbilgi şablonu.</div>
+        </div>
+      </div>
+      <div class="modal-actions" style="margin-top:16px;">
+        <button id="btnCancelTemplateModal" class="btn btn-secondary" data-i18n="cancel">İptal</button>
+        <button id="btnConfirmTemplateModal" class="btn btn-primary" data-i18n="selectTemplate">Şablonu Aç</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Open Report Modal -->
+  <div id="openModal" class="modal-backdrop" hidden>
+    <div class="modal-card">
+      <div class="modal-head">
+        <h3 data-i18n="savedReports">Kayıtlı .sbs Raporları</h3>
+        <button id="btnCloseOpenModal" class="modal-close">✕</button>
+      </div>
+      <div id="reportsList" class="modal-list"></div>
+    </div>
+  </div>
+
+  <!-- Schema / JSON / API Data Source Modal -->
+  <div id="dsModal" class="modal-backdrop" hidden>
+    <div class="modal-card modal-wide">
+      <div class="modal-head">
+        <h3 data-i18n="addDataSourceTitle">Yeni Veri Kaynağı (Şema veya Örnek Veri)</h3>
+        <button id="btnCloseDsModal" class="modal-close">✕</button>
+      </div>
+      <div style="display:flex;gap:4px;padding:8px 14px 0;border-bottom:1px solid var(--border);">
+        <button type="button" class="cdoc-tab cdoc-active" id="dsTabSchema" data-dstab="schema">📋 Şema Tanımla (Verisiz — C# DataSet)</button>
+        <button type="button" class="cdoc-tab" id="dsTabJson" data-dstab="json">📊 Örnek / JSON / API Verisi</button>
+      </div>
+      <div class="modal-form">
+        <div style="display:flex;gap:8px;">
+          <label style="flex:1;"><span data-i18n="dataSourceName">Veri Kaynağı Adı (Name)</span>
+            <input id="dsNameInput" class="rinput" placeholder="Data veya SqlDataSource1" value="Data" />
+          </label>
+          <label style="flex:1;"><span>Takma Ad (Alias)</span>
+            <input id="dsAliasInput" class="rinput" placeholder="Örn: Aktif Personel Listesi" />
+          </label>
+        </div>
+
+        <!-- TAB 1: Schema-Only (Name, Alias, Columns — no data required!) -->
+        <div id="dsPaneSchema">
+          <div style="font-size:11px;color:var(--text-muted);margin-bottom:6px;">
+            💡 Veri gerekmez! Kolon adlarını tanımlayın; çalışma zamanında C# <code>DataSet</code> / <code>DataTable</code> verisi <b>Türkçe karakter ve büyük/küçük harf duyarsız</b> otomatik eşleştirilir (örn: <code>UNVAN</code> ↔ <code>Ünvan</code>).
+          </div>
+          <div style="display:flex;gap:6px;margin-bottom:8px;">
+            <input id="dsBulkColsInput" class="rinput" style="flex:1;" placeholder="Hızlı toplu ekle (virgülle): TCKIMLIKNO, AD, SOYAD, UNVAN, FIILI_GOREV_YER" />
+            <button type="button" id="btnBulkAddCols" class="rbtn">+ Toplu Ekle</button>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+            <span style="font-size:11px;font-weight:700;">Kolonlar</span>
+            <button type="button" id="btnAddSchemaCol" class="rbtn rbtn-xs">+ Kolon Ekle</button>
+          </div>
+          <div id="dsSchemaColsList" style="max-height:200px;overflow:auto;display:flex;flex-direction:column;gap:4px;border:1px solid var(--border);border-radius:4px;padding:6px;"></div>
+        </div>
+
+        <!-- TAB 2: Optional Sample JSON / API Data for Preview Testing -->
+        <div id="dsPaneJson" hidden>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:6px;">
+            <small style="color:var(--text-muted);font-weight:700;">Hızlı Örnek Yükle:</small>
+            <button type="button" class="rbtn rbtn-xs" data-ds-preset="faturalar">🧾 Gruplu Faturalar (Şehir)</button>
+            <button type="button" class="rbtn rbtn-xs" data-ds-preset="hastalar">🏥 Poliklinik Hastaları</button>
+            <button type="button" class="rbtn rbtn-xs" data-ds-preset="personel">👥 Departman Personeli</button>
+          </div>
+          <div style="display:flex;gap:6px;align-items:flex-end;margin-bottom:6px;">
+            <label style="flex:1;"><span>REST API URL (Opsiyonel — JSON dizi döner)</span>
+              <input id="dsApiUrlInput" class="rinput" placeholder="https://api.ornek.com/veriler" />
+            </label>
+            <button type="button" id="btnFetchDsUrl" class="btn btn-secondary" style="height:28px;">🌐 URL'den Çek</button>
+          </div>
+          <label><span data-i18n="sampleJson">Örnek / Gerçek JSON Dizisi (Array)</span>
+            <textarea id="dsJsonInput" class="rinput mono" rows="7">[
+  { "FaturaNo": "F-1001", "Sehir": "İstanbul", "Musteri": "Sobis A.Ş.", "Tutar": 14500, "Adet": 3 },
+  { "FaturaNo": "F-1002", "Sehir": "İstanbul", "Musteri": "Anadolu Bilişim", "Tutar": 8200, "Adet": 2 },
+  { "FaturaNo": "F-1003", "Sehir": "Ankara", "Musteri": "Ivent Ltd.", "Tutar": 9800, "Adet": 4 },
+  { "FaturaNo": "F-1004", "Sehir": "Ankara", "Musteri": "Başkent Sağlık", "Tutar": 19400, "Adet": 5 },
+  { "FaturaNo": "F-1005", "Sehir": "İzmir", "Musteri": "Ege Lojistik", "Tutar": 6750, "Adet": 1 }
+]</textarea>
+          </label>
+        </div>
+
+        <button id="btnSaveDs" class="btn btn-primary" data-i18n="addDataSource">Veri Kaynağını Ekle</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Data Preview (View Data) Modal -->
+  <div id="dataPreviewModal" class="modal-backdrop" hidden>
+    <div class="modal-card modal-wide">
+      <div class="modal-head">
+        <h3 id="dataPreviewTitle">👁 Veri Önizleme</h3>
+        <button id="btnCloseDataPreview" class="modal-close">✕</button>
+      </div>
+      <div id="dataPreviewBody" style="max-height:60vh;overflow:auto;padding:8px;"></div>
+    </div>
+  </div>
+
+  <!-- Group Condition Modal (Grup Durumu — Double-click GroupHeaderBand) -->
+  <div id="groupBandModal" class="modal-backdrop" hidden>
+    <div class="modal-card modal-wide" style="max-width:620px;">
+      <div class="modal-head">
+        <h3 id="groupBandModalTitle">✏ Grup Durumu</h3>
+        <button id="btnCloseGroupModal" class="modal-close">✕</button>
+      </div>
+      <div class="sti-setup-body">
+        <div class="sti-setup-main">
+          <!-- Tab: Veri Sütunu -->
+          <div id="grpPaneColumn">
+            <div id="grpColumnsTree"></div>
+          </div>
+          <!-- Tab: Expression -->
+          <div id="grpPaneExpr" hidden>
+            <label style="display:flex;flex-direction:column;gap:4px;">
+              <span>Gruplama İfadesi (Expression)</span>
+              <input id="grpExprInput" class="rinput mono" placeholder="Örn: Products.CategoryName veya {Data.UNVAN}" />
+            </label>
+          </div>
+          <!-- Tab: Summary -->
+          <div id="grpPaneSummary" hidden>
+            <div style="display:flex;flex-direction:column;gap:8px;">
+              <label style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+                <span>Özet Rapor Yönü:</span>
+                <select id="grpSummaryDir" class="rselect" style="width:200px;">
+                  <option value="asc">Yukarıdan Aşağıya (Artan A→Z)</option>
+                  <option value="desc">Aşağıdan Yukarıya (Azalan Z→A)</option>
+                </select>
+              </label>
+              <label style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+                <span>Özet Tipi:</span>
+                <select id="grpSummaryType" class="rselect" style="width:200px;">
+                  <option value="Sum">Sum (Toplam)</option>
+                  <option value="Count">Count (Adet)</option>
+                  <option value="Avg">Avg (Ortalama)</option>
+                  <option value="Min">Min</option>
+                  <option value="Max">Max</option>
+                </select>
+              </label>
+            </div>
+          </div>
+        </div>
+        <div class="sti-setup-side">
+          <button type="button" class="sti-stab" data-grptab="expr"><span class="sti-stab-ico">𝑓𝑥</span><span>Expression</span></button>
+          <button type="button" class="sti-stab active" data-grptab="column"><span class="sti-stab-ico">🗄</span><span>Veri Sütunu</span></button>
+          <button type="button" class="sti-stab" data-grptab="summary"><span class="sti-stab-ico">Σ</span><span>Summary</span></button>
+        </div>
+      </div>
+      <div class="sti-setup-footer">
+        <label class="rfield"><span>Sıralama:</span>
+          <select id="grpSortSelect" class="rselect">
+            <option value="asc">Artan (A→Z)</option>
+            <option value="desc">Azalan (Z→A)</option>
+          </select>
+        </label>
+        <div style="display:flex;gap:6px;">
+          <button type="button" id="btnGroupOk" class="btn btn-primary">Tamam</button>
+          <button type="button" id="btnGroupCancel" class="btn btn-secondary">İptal Et</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Data Band Setup Modal (Veri — Double-click Data/Table Band) -->
+  <div id="dataBandModal" class="modal-backdrop" hidden>
+    <div class="modal-card modal-wide" style="max-width:660px;">
+      <div class="modal-head">
+        <h3 id="dataBandModalTitle">🗄 Veri</h3>
+        <button id="btnCloseDataBandModal" class="modal-close">✕</button>
+      </div>
+      <div style="display:flex;gap:6px;padding:6px 12px;border-bottom:1px solid var(--border);background:var(--chrome);">
+        <button type="button" id="btnDataModalNewDs" class="rbtn rbtn-xs">🗄 Yeni Veri Kaynağı</button>
+      </div>
+      <div class="sti-setup-body">
+        <div class="sti-setup-main">
+          <!-- Tab: Veri Kaynağı -->
+          <div id="dbPaneSource">
+            <div id="dbSourcesTree"></div>
+          </div>
+          <!-- Tab: Master Bileşeni -->
+          <div id="dbPaneMaster" hidden>
+            <label style="display:flex;flex-direction:column;gap:4px;">
+              <span>Master Bileşeni (Üst Veri Bandı — Opsiyonel)</span>
+              <select id="dbMasterCompSelect" class="rselect">
+                <option value="">[Atanmamış]</option>
+              </select>
+            </label>
+          </div>
+          <!-- Tab: Sırala -->
+          <div id="dbPaneSort" hidden>
+            <div style="display:flex;flex-direction:column;gap:8px;">
+              <label style="display:flex;flex-direction:column;gap:4px;">
+                <span>Sıralama Alanı</span>
+                <select id="dbSortBySelect" class="rselect">
+                  <option value="">[Sıralama Yok]</option>
+                </select>
+              </label>
+              <label style="display:flex;flex-direction:column;gap:4px;">
+                <span>Sıralama Yönü</span>
+                <select id="dbSortDirSelect" class="rselect">
+                  <option value="asc">Artan (A→Z / 0→9)</option>
+                  <option value="desc">Azalan (Z→A / 9→0)</option>
+                </select>
+              </label>
+            </div>
+          </div>
+          <!-- Tab: Filtreler -->
+          <div id="dbPaneFilter" hidden>
+            <label style="display:flex;flex-direction:column;gap:4px;">
+              <span>Filtre İfadesi (Filter Expression)</span>
+              <input id="dbFilterInput" class="rinput mono" placeholder="Örn: UnitsInStock &lt; 50 veya UnitPrice &gt; 1000" />
+              <small style="color:var(--text-muted);">Boş bırakılırsa tüm kayıtlar listelenir.</small>
+            </label>
+          </div>
+        </div>
+        <div class="sti-setup-side">
+          <button type="button" class="sti-stab active" data-dbtab="source"><span class="sti-stab-ico">🗄</span><span>Veri Kaynağı</span></button>
+          <button type="button" class="sti-stab" data-dbtab="master"><span class="sti-stab-ico">🔗</span><span>Master Bileşeni</span></button>
+          <button type="button" class="sti-stab" data-dbtab="sort"><span class="sti-stab-ico">⇅</span><span>Sırala</span></button>
+          <button type="button" class="sti-stab" data-dbtab="filter"><span class="sti-stab-ico">⏚</span><span>Filtreler</span></button>
+        </div>
+      </div>
+      <div class="sti-setup-footer">
+        <label class="rfield"><span>Veri Sayısı:</span>
+          <input type="number" id="dbCountDataInput" class="rinput-sm" style="width:70px;" min="0" value="0" title="0 = tüm satırlar" />
+        </label>
+        <div style="display:flex;gap:6px;">
+          <button type="button" id="btnDataBandOk" class="btn btn-primary">Tamam</button>
+          <button type="button" id="btnDataBandCancel" class="btn btn-secondary">İptal Et</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Data Band Placement Wizard -->
+  <div id="dsWizardModal" class="modal-backdrop" hidden>
+    <div class="modal-card modal-wide" style="max-width:540px;">
+      <div class="modal-head">
+        <h3 id="dsWizardTitle">⚡ Veri Bandı Yerleşim Sihirbazı</h3>
+        <button id="btnCloseDsWizard" class="modal-close">✕</button>
+      </div>
+      <div class="modal-form">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <span style="font-size:11.5px;font-weight:700;">Yerleştirilecek Sütunlar:</span>
+          <div style="display:flex;gap:4px;">
+            <button type="button" id="btnWizSelectAll" class="rbtn rbtn-xs">Tümünü Seç</button>
+            <button type="button" id="btnWizSelectNone" class="rbtn rbtn-xs">Temizle</button>
+          </div>
+        </div>
+        <div id="dsWizardCols" style="max-height:220px;overflow:auto;border:1px solid var(--border);border-radius:4px;padding:6px;display:flex;flex-direction:column;gap:4px;"></div>
+        <div style="display:flex;gap:14px;flex-wrap:wrap;padding-top:4px;">
+          <label class="rfield"><input type="checkbox" id="wizCreateHeader" checked /> <span>Başlık Bandı (Header)</span></label>
+          <label class="rfield"><input type="checkbox" id="wizCreateData" checked /> <span>Veri Bandı (Data)</span></label>
+          <label class="rfield"><input type="checkbox" id="wizCreateFooter" /> <span>Özet/Toplam (Footer)</span></label>
+        </div>
+        <div style="display:flex;justify-content:flex-end;gap:6px;margin-top:6px;">
+          <button type="button" id="btnDsWizardOk" class="btn btn-primary">Tamam — Yerleştir</button>
+          <button type="button" id="btnDsWizardCancel" class="btn btn-secondary">İptal Et</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Context Menu -->
+  <div id="ctxMenu" class="ctx-menu" hidden>
+    <div class="ctx-item" data-ctx="edit"><span data-i18n="ctxEdit">İfadeyi Düzenle...</span></div>
+    <div class="ctx-item" data-ctx="copy"><span data-i18n="ctxCopy">Kopyala</span><kbd>Ctrl+C</kbd></div>
+    <div class="ctx-item" data-ctx="paste"><span data-i18n="ctxPaste">Yapıştır</span><kbd>Ctrl+V</kbd></div>
+    <div class="ctx-item" data-ctx="duplicate"><span data-i18n="ctxDuplicate">Çoğalt</span><kbd>Ctrl+D</kbd></div>
+    <div class="ctx-sep"></div>
+    <div class="ctx-item" data-ctx="front"><span data-i18n="bringFront">Öne Getir</span></div>
+    <div class="ctx-item" data-ctx="back"><span data-i18n="sendBack">Arkaya Gönder</span></div>
+    <div class="ctx-sep"></div>
+    <div class="ctx-item danger" data-ctx="delete"><span data-i18n="delete">Sil</span><kbd>Del</kbd></div>
+  </div>
+
+  <!-- 4-Tab Text / Expression Editor Modal -->
+  <div id="exprModal" class="modal-backdrop" hidden>
+    <div class="modal-card modal-wide" style="max-width:760px;">
+      <div class="modal-head">
+        <h3 data-i18n="exprEditor">Metin &amp; İfade Düzenleyici</h3>
+        <button id="btnCloseExpr" class="modal-close">✕</button>
+      </div>
+      <div style="display:flex;gap:4px;padding:6px 12px 0;border-bottom:1px solid var(--border);background:var(--chrome);">
+        <button type="button" class="cdoc-tab cdoc-active" data-exprtab="expression">𝑓𝑥 İfade</button>
+        <button type="button" class="cdoc-tab" data-exprtab="column">🗄 Veri Sütunu</button>
+        <button type="button" class="cdoc-tab" data-exprtab="sysvar">⚙ Sistem &amp; Değişken</button>
+        <button type="button" class="cdoc-tab" data-exprtab="summary">Σ Özet (Summary)</button>
+      </div>
+      <!-- Tab 1: Expression -->
+      <div class="expr-body" id="exprPaneExpression">
+        <div class="expr-left">
+          <div class="pane-title" data-i18n="dataFields">Veri Alanları</div>
+          <div id="exprFields" class="expr-list"></div>
+          <div class="pane-title" style="margin-top:10px;" data-i18n="functions">Fonksiyonlar</div>
+          <div class="expr-list">
+            <div class="expr-fn" data-ins="{Sum(Field)}">Sum(Field)</div>
+            <div class="expr-fn" data-ins="{Avg(Field)}">Avg(Field)</div>
+            <div class="expr-fn" data-ins="{Count()}">Count()</div>
+            <div class="expr-fn" data-ins="{Min(Field)}">Min(Field)</div>
+            <div class="expr-fn" data-ins="{Max(Field)}">Max(Field)</div>
+            <div class="expr-fn" data-ins="{IIF(Condition, 'A', 'B')}">IIF(cond, a, b)</div>
+            <div class="expr-fn" data-ins="{Round(Value, 2)}">Round(x, n)</div>
+            <div class="expr-fn" data-ins="{Upper(Field)}">Upper(x)</div>
+            <div class="expr-fn" data-ins="{Lower(Field)}">Lower(x)</div>
+            <div class="expr-fn" data-ins="{Format(Field, 'N2')}">Format(x, 'N2')</div>
+            <div class="expr-fn" data-ins="{Coalesce(Field, '-')}">Coalesce(a, b)</div>
+            <div class="expr-fn" data-ins="{PageNumber}">PageNumber</div>
+            <div class="expr-fn" data-ins="{TotalPageCount}">TotalPageCount</div>
+            <div class="expr-fn" data-ins="{Today}">Today</div>
+          </div>
+        </div>
+        <div class="expr-right">
+          <textarea id="exprText" spellcheck="false"></textarea>
+          <div class="expr-hint"><span data-i18n="example">Örnek</span>: <code>{Products.UnitPrice * Products.Quantity}</code> · <code>{IIF(UnitsInStock &lt; 10, 'Kritik', 'Normal')}</code></div>
+        </div>
+      </div>
+      <!-- Tab 2: Data Column -->
+      <div id="exprPaneColumn" style="padding:10px 14px;max-height:320px;overflow:auto;" hidden>
+        <div id="exprColTree"></div>
+      </div>
+      <!-- Tab 3: System & Report Variables -->
+      <div id="exprPaneSysvar" style="padding:10px 14px;max-height:320px;overflow:auto;" hidden>
+        <div id="exprSysVarList" style="display:grid;grid-template-columns:1fr 1fr;gap:6px;"></div>
+      </div>
+      <!-- Tab 4: Summary Builder -->
+      <div id="exprPaneSummary" style="padding:14px;display:flex;flex-direction:column;gap:10px;" hidden>
+        <label style="display:flex;flex-direction:column;gap:4px;"><span>Özet Fonksiyonu</span>
+          <select id="exprSumFunc" class="rselect">
+            <option value="Sum">Sum (Toplam)</option>
+            <option value="Avg">Avg (Ortalama)</option>
+            <option value="Count">Count (Satır Sayısı)</option>
+            <option value="Min">Min (En Küçük)</option>
+            <option value="Max">Max (En Büyük)</option>
+          </select>
+        </label>
+        <label style="display:flex;flex-direction:column;gap:4px;"><span>Veri Sütunu</span>
+          <select id="exprSumCol" class="rselect"></select>
+        </label>
+        <button type="button" id="btnApplySummaryToExpr" class="btn btn-secondary" style="align-self:flex-start;">↳ İfade Kutusuna Yaz</button>
+      </div>
+      <div class="sti-setup-footer">
+        <span style="font-size:11px;color:var(--text-muted);">Çift tık ile alan ekleyin</span>
+        <div style="display:flex;gap:6px;">
+          <button id="btnExprCancel" class="btn btn-secondary" data-i18n="cancel">İptal</button>
+          <button id="btnExprOk" class="btn btn-primary" data-i18n="ok">Tamam</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Text Format Editor Modal -->
+  <div id="textFormatModal" class="modal-backdrop" hidden>
+    <div class="modal-card modal-wide" style="max-width:560px;">
+      <div class="modal-head">
+        <h3># Metin Biçimi (Text Format)</h3>
+        <button id="btnCloseFmtModal" class="modal-close">✕</button>
+      </div>
+      <div class="sti-setup-body" style="min-height:220px;">
+        <div class="sti-setup-side" style="border-left:none;border-right:1px solid var(--border);width:130px;">
+          <button type="button" class="sti-stab active" data-fmtcat="general">Genel</button>
+          <button type="button" class="sti-stab" data-fmtcat="number">Sayı (Number)</button>
+          <button type="button" class="sti-stab" data-fmtcat="currency">Para Birimi (₺)</button>
+          <button type="button" class="sti-stab" data-fmtcat="date">Tarih (Date)</button>
+          <button type="button" class="sti-stab" data-fmtcat="percent">Yüzde (%)</button>
+          <button type="button" class="sti-stab" data-fmtcat="custom">Özel (Custom)</button>
+        </div>
+        <div class="sti-setup-main">
+          <div style="padding:8px 10px;background:var(--card2);border:1px solid var(--border);border-radius:4px;">
+            <small style="color:var(--text-muted);">Örnek Çıktı:</small>
+            <div id="fmtSamplePreview" style="font-size:14px;font-weight:700;margin-top:2px;">1234.56</div>
+          </div>
+          <label style="display:flex;flex-direction:column;gap:4px;"><span>Format Kodu (.NET Format String)</span>
+            <input id="fmtCodeInput" class="rinput mono" placeholder="Örn: N2, C2, dd.MM.yyyy, P0" />
+          </label>
+          <div id="fmtPresets" style="display:flex;gap:4px;flex-wrap:wrap;"></div>
+        </div>
+      </div>
+      <div class="sti-setup-footer">
+        <span></span>
+        <div style="display:flex;gap:6px;">
+          <button type="button" id="btnFmtOk" class="btn btn-primary">Tamam</button>
+          <button type="button" id="btnFmtCancel" class="btn btn-secondary">İptal</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Conditions Editor Modal -->
+  <div id="conditionsModal" class="modal-backdrop" hidden>
+    <div class="modal-card modal-wide" style="max-width:660px;">
+      <div class="modal-head">
+        <h3>🎨 Koşullar (Conditional Formatting)</h3>
+        <button id="btnCloseCondModal" class="modal-close">✕</button>
+      </div>
+      <div style="padding:8px 12px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">
+        <button type="button" id="btnModalAddCond" class="btn btn-primary rbtn-xs">+ Koşul Ekle</button>
+        <small style="color:var(--text-muted);">Örn: <code>UnitsInStock &lt; 20</code> veya <code>UnitPrice &gt; 5000</code></small>
+      </div>
+      <div id="condModalList" style="padding:10px 12px;max-height:320px;overflow:auto;display:flex;flex-direction:column;gap:8px;"></div>
+      <div class="sti-setup-footer">
+        <span></span>
+        <div style="display:flex;gap:6px;">
+          <button type="button" id="btnCondOk" class="btn btn-primary">Tamam</button>
+          <button type="button" id="btnCondCancel" class="btn btn-secondary">İptal</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Image Editor Modal -->
+  <div id="imageEditorModal" class="modal-backdrop" hidden>
+    <div class="modal-card modal-wide" style="max-width:540px;">
+      <div class="modal-head">
+        <h3>🖼 Görsel Düzenleyici (Image Editor)</h3>
+        <button id="btnCloseImgModal" class="modal-close">✕</button>
+      </div>
+      <div class="modal-form">
+        <div style="display:flex;gap:8px;align-items:center;">
+          <input type="file" id="imgFileUpload" accept="image/*" style="flex:1;" />
+          <button type="button" id="btnImgClear" class="rbtn rbtn-xs">Temizle</button>
+        </div>
+        <label><span>Görsel URL veya Veri İfadesi</span>
+          <input id="imgUrlInput" class="rinput" placeholder="https://... veya Base64 veri" />
+        </label>
+        <div id="imgPreviewBox" style="height:140px;border:1px dashed var(--border-strong);border-radius:4px;display:flex;align-items:center;justify-content:center;overflow:hidden;background:#ffffff;">
+          <span style="color:#94a3b8;">Önizleme yok</span>
+        </div>
+        <div style="display:flex;justify-content:flex-end;gap:6px;">
+          <button type="button" id="btnImgOk" class="btn btn-primary">Tamam</button>
+          <button type="button" id="btnImgCancel" class="btn btn-secondary">İptal</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Barcode Editor Modal -->
+  <div id="barcodeEditorModal" class="modal-backdrop" hidden>
+    <div class="modal-card modal-wide" style="max-width:520px;">
+      <div class="modal-head">
+        <h3>▮▯ Barkod / QR Düzenleyici</h3>
+        <button id="btnCloseBcModal" class="modal-close">✕</button>
+      </div>
+      <div class="modal-form">
+        <div style="display:flex;gap:8px;">
+          <label style="flex:1;"><span>Barkod Formatı</span>
+            <select id="bcFormatSelect" class="rselect">
+              <option value="Code128">Code 128</option>
+              <option value="EAN13">EAN-13</option>
+              <option value="QR">QR Code</option>
+            </select>
+          </label>
+          <label style="width:110px;"><span>Açı (°)</span>
+            <select id="bcAngleSelect" class="rselect">
+              <option value="0">0°</option>
+              <option value="90">90°</option>
+              <option value="180">180°</option>
+              <option value="270">270°</option>
+            </select>
+          </label>
+        </div>
+        <label><span>Barkod Değeri / İfadesi</span>
+          <input id="bcValueInput" class="rinput mono" placeholder="1234567890 veya {Products.ProductID}" />
+        </label>
+        <div id="bcLivePreview" style="height:90px;background:#ffffff;border:1px solid var(--border);border-radius:4px;display:flex;align-items:center;justify-content:center;padding:8px;"></div>
+        <div style="display:flex;justify-content:flex-end;gap:6px;">
+          <button type="button" id="btnBcOk" class="btn btn-primary">Tamam</button>
+          <button type="button" id="btnBcCancel" class="btn btn-secondary">İptal</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Chart Editor Modal -->
+  <div id="chartEditorModal" class="modal-backdrop" hidden>
+    <div class="modal-card modal-wide" style="max-width:540px;">
+      <div class="modal-head">
+        <h3>📊 Grafik Düzenleyici (Chart Editor)</h3>
+        <button id="btnCloseChartModal" class="modal-close">✕</button>
+      </div>
+      <div class="modal-form">
+        <label><span>Grafik Türü</span>
+          <select id="chTypeSelect" class="rselect">
+            <option value="Bar">Çubuk Grafik (Bar)</option>
+            <option value="Line">Çizgi Grafik (Line)</option>
+            <option value="Pie">Pasta Grafik (Pie)</option>
+          </select>
+        </label>
+        <div style="display:flex;gap:8px;">
+          <label style="flex:1;"><span>Kategori (X Ekseni) Sütunu</span>
+            <select id="chCatSelect" class="rselect"></select>
+          </label>
+          <label style="flex:1;"><span>Değer (Y Ekseni) Sütunu</span>
+            <select id="chValSelect" class="rselect"></select>
+          </label>
+        </div>
+        <div id="chLivePreview" style="height:130px;background:#ffffff;border:1px solid var(--border);border-radius:4px;padding:6px;"></div>
+        <div style="display:flex;justify-content:flex-end;gap:6px;">
+          <button type="button" id="btnChartOk" class="btn btn-primary">Tamam</button>
+          <button type="button" id="btnChartCancel" class="btn btn-secondary">İptal</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="i18n.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

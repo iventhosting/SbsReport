@@ -1,0 +1,32 @@
+## .NET / Visual Studio / Rider
+bin/
+obj/
+out/
+.vs/
+.idea/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*.cache
+*.nupkg
+*.snupkg
+nupkg/
+
+## Test & Coverage
+TestResults/
+coverage/
+*.trx
+*.coverage
+
+## Scratch & Local Working Files
+scratch/
+.agents/
+samples/SobisReport.Demo/
+DOCS_KURULUM_VE_KOD.html
+DOCS_KURULUM_VE_KOD.md
+
+## OS Files
+.DS_Store
+Thumbs.db
+desktop.ini

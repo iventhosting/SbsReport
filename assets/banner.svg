@@ -1,0 +1,69 @@
+<svg width="1200" height="300" viewBox="0 0 1200 300" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1200" y2="300" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#0F172A"/>
+      <stop offset="50%" stop-color="#1E1B4B"/>
+      <stop offset="100%" stop-color="#0C4A6E"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#38BDF8"/>
+      <stop offset="50%" stop-color="#818CF8"/>
+      <stop offset="100%" stop-color="#34D399"/>
+    </linearGradient>
+    <linearGradient id="card" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.10"/>
+      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0.03"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1200" height="300" rx="20" fill="url(#bg)"/>
+
+  <!-- Subtle Grid -->
+  <g opacity="0.08" stroke="#94A3B8" stroke-width="1">
+    <path d="M0 60 H1200 M0 120 H1200 M0 180 H1200 M0 240 H1200"/>
+    <path d="M120 0 V300 M240 0 V300 M360 0 V300 M480 0 V300 M600 0 V300 M720 0 V300 M840 0 V300 M960 0 V300 M1080 0 V300"/>
+  </g>
+
+  <!-- Glow Orbs -->
+  <circle cx="170" cy="60" r="140" fill="#38BDF8" opacity="0.12"/>
+  <circle cx="1040" cy="240" r="160" fill="#818CF8" opacity="0.14"/>
+
+  <!-- Logo Mark -->
+  <g transform="translate(68, 72)">
+    <rect width="128" height="128" rx="26" fill="url(#accent)"/>
+    <rect x="24" y="24" width="80" height="16" rx="5" fill="#0F172A" opacity="0.9"/>
+    <rect x="24" y="50" width="52" height="12" rx="4" fill="#0F172A" opacity="0.72"/>
+    <rect x="24" y="70" width="80" height="12" rx="4" fill="#0F172A" opacity="0.72"/>
+    <rect x="24" y="90" width="62" height="12" rx="4" fill="#0F172A" opacity="0.55"/>
+    <circle cx="95" cy="96" r="11" fill="#0F172A"/>
+    <path d="M90 96 L94 100 L101 92" stroke="#34D399" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+
+  <!-- Main Title -->
+  <text x="228" y="132" font-family="'Segoe UI', Inter, Arial, sans-serif" font-size="64" font-weight="800" fill="#FFFFFF" letter-spacing="-1.5">SbsReport</text>
+  <rect x="576" y="88" width="118" height="34" rx="17" fill="#38BDF8" fill-opacity="0.18" stroke="#38BDF8" stroke-opacity="0.5"/>
+  <text x="635" y="110" text-anchor="middle" font-family="'Segoe UI', Inter, Arial, sans-serif" font-size="14" font-weight="700" fill="#7DD3FC">.NET 10 · MIT</text>
+
+  <text x="230" y="172" font-family="'Segoe UI', Inter, Arial, sans-serif" font-size="22" font-weight="500" fill="#CBD5E1">
+    Zero-Dependency Pure C# Reporting Engine, Web Designer IDE &amp; Streaming PDF/Excel Generator
+  </text>
+
+  <!-- Stat Pills -->
+  <g transform="translate(230, 200)">
+    <rect width="215" height="52" rx="12" fill="url(#card)" stroke="#38BDF8" stroke-opacity="0.35"/>
+    <text x="18" y="24" font-family="'Segoe UI', Arial, sans-serif" font-size="12" font-weight="600" fill="#94A3B8">100,000 ROWS TO PDF</text>
+    <text x="18" y="43" font-family="'Segoe UI', Arial, sans-serif" font-size="18" font-weight="800" fill="#38BDF8">5.2 sec · 14.0 MB</text>
+
+    <rect x="231" width="195" height="52" rx="12" fill="url(#card)" stroke="#34D399" stroke-opacity="0.35"/>
+    <text x="249" y="24" font-family="'Segoe UI', Arial, sans-serif" font-size="12" font-weight="600" fill="#94A3B8">DEPENDENCIES</text>
+    <text x="249" y="43" font-family="'Segoe UI', Arial, sans-serif" font-size="18" font-weight="800" fill="#34D399">0 External NuGets</text>
+
+    <rect x="442" width="205" height="52" rx="12" fill="url(#card)" stroke="#A78BFA" stroke-opacity="0.35"/>
+    <text x="460" y="24" font-family="'Segoe UI', Arial, sans-serif" font-size="12" font-weight="600" fill="#94A3B8">EXPORT ENGINE</text>
+    <text x="460" y="43" font-family="'Segoe UI', Arial, sans-serif" font-size="18" font-weight="800" fill="#C4B5FD">11 Native Formats</text>
+
+    <rect x="663" width="215" height="52" rx="12" fill="url(#card)" stroke="#FBBF24" stroke-opacity="0.35"/>
+    <text x="681" y="24" font-family="'Segoe UI', Arial, sans-serif" font-size="12" font-weight="600" fill="#94A3B8">EMBEDDED IDE</text>
+    <text x="681" y="43" font-family="'Segoe UI', Arial, sans-serif" font-size="18" font-weight="800" fill="#FDE68A">1-Line Web Designer</text>
+  </g>
+</svg>

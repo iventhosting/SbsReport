@@ -2137,22 +2137,16 @@
         acts.appendChild(btnView);
         acts.appendChild(btnBind);
 
-        if (ds.isCustom) {
-          const btnDelDs = document.createElement('button');
-          btnDelDs.className = 'rbtn rbtn-xs';
-          btnDelDs.textContent = '🗑';
-          btnDelDs.style.color = '#f87171';
-          btnDelDs.title = 'Veri Kaynağını Sil';
-          btnDelDs.onclick = async (e) => {
-            e.stopPropagation();
-            if (!await sbsConfirm(`"${ds.name}" veri kaynağını rapordan silmek istiyor musunuz?`, 'Veri Kaynağını Sil')) return;
-            pushUndo();
-            state.report.dataSources = state.report.dataSources.filter(x => x.name.toLowerCase() !== ds.name.toLowerCase());
-            renderDictionary();
-            setStatus(`Veri kaynağı silindi: ${ds.name}`);
-          };
-          acts.appendChild(btnDelDs);
-        }
+        const btnDelDs = document.createElement('button');
+        btnDelDs.className = 'rbtn rbtn-xs';
+        btnDelDs.textContent = '🗑';
+        btnDelDs.style.color = '#f87171';
+        btnDelDs.title = 'Veri Kaynağını Sil';
+        btnDelDs.onclick = async (e) => {
+          e.stopPropagation();
+          await deleteDictionaryItem(ds.name, null);
+        };
+        acts.appendChild(btnDelDs);
 
         head.appendChild(acts);
         dsNode.appendChild(head);
@@ -2172,22 +2166,17 @@
             ? `<span class="col-type" style="background:#7c3aed;color:#fff;" title="Hesaplanan Sütun: ${escapeHtml(col.expression || '')}">fx</span>`
             : `<span class="col-type">${(col.type || 'S')[0].toUpperCase()}</span>`;
           colEl.innerHTML = `<span style="display:inline-flex;align-items:center;gap:5px;overflow:hidden;text-overflow:ellipsis;">${badge}<span>${escapeHtml(col.alias || col.name)}</span></span>`
-            + (ds.isCustom ? `<button type="button" class="rbtn rbtn-xs dict-col-del" title="Sütunu Sil" style="padding:0 4px;opacity:.65;color:#f87171;">✕</button>` : '');
+            + `<button type="button" class="rbtn rbtn-xs dict-col-del" title="Sütunu Sil" style="padding:0 4px;opacity:.65;color:#f87171;">✕</button>`;
           colEl.oncontextmenu = (e) => {
             e.preventDefault();
             e.stopPropagation();
-            showDictContextMenu(e.clientX, e.clientY, { dsName: ds.name, colName: col.name, isCustom: !!ds.isCustom });
+            showDictContextMenu(e.clientX, e.clientY, { dsName: ds.name, colName: col.name, isCustom: true });
           };
           const delBtn = colEl.querySelector('.dict-col-del');
           if (delBtn) {
             delBtn.onclick = async (e) => {
               e.stopPropagation();
-              if (!await sbsConfirm(`"${ds.name}.${col.name}" sütununu silmek istiyor musunuz?`, 'Sütunu Sil')) return;
-              pushUndo();
-              const targetDs = state.report.dataSources.find(x => x.name.toLowerCase() === ds.name.toLowerCase());
-              if (targetDs) targetDs.columns = (targetDs.columns || []).filter(c => c.name !== col.name);
-              renderDictionary();
-              setStatus(`Sütun silindi: ${ds.name}.${col.name}`);
+              await deleteDictionaryItem(ds.name, col.name);
             };
           }
           colEl.ondragstart = (e) => {
@@ -2920,19 +2909,7 @@
             if (newAlias && newAlias.trim()) { pushUndo(); customDs.alias = newAlias.trim(); renderDictionary(); }
           }
         } else if (act === 'delete') {
-          if (tInfo.colName && customDs) {
-            if (!await sbsConfirm(`"${customDs.name}.${tInfo.colName}" sütununu silmek istiyor musunuz?`, 'Sütunu Sil')) return;
-            pushUndo();
-            customDs.columns = (customDs.columns || []).filter(c => c.name !== tInfo.colName);
-            renderDictionary();
-            setStatus(`Sütun silindi: ${customDs.name}.${tInfo.colName}`);
-          } else if (customDs) {
-            if (!await sbsConfirm(`"${customDs.name}" veri kaynağını rapordan silmek istiyor musunuz?`, 'Veri Kaynağını Sil')) return;
-            pushUndo();
-            state.report.dataSources = state.report.dataSources.filter(x => x.name.toLowerCase() !== customDs.name.toLowerCase());
-            renderDictionary();
-            setStatus(`Veri kaynağı silindi: ${customDs.name}`);
-          }
+          await deleteDictionaryItem(tInfo.dsName, tInfo.colName);
         } else if (act === 'expandAll') {
           $$('.dict-cols').forEach(el => { el.hidden = false; });
         } else if (act === 'collapseAll') {
@@ -4326,6 +4303,27 @@
     });
   }
 
+  async function deleteDictionaryItem(dsName, colName) {
+    if (!state.report || !dsName) return;
+    if (colName) {
+      if (!await sbsConfirm(`"${dsName}.${colName}" sütununu silmek istiyor musunuz?`, 'Sütunu Sil')) return;
+      pushUndo();
+      const customDs = (state.report.dataSources || []).find(x => x.name.toLowerCase() === dsName.toLowerCase());
+      if (customDs) customDs.columns = (customDs.columns || []).filter(c => c.name !== colName);
+      const demoDs = (state.demoSources || []).find(x => x.name.toLowerCase() === dsName.toLowerCase());
+      if (demoDs) demoDs.columns = (demoDs.columns || []).filter(c => c.name !== colName);
+      renderDictionary();
+      setStatus(`Sütun silindi: ${dsName}.${colName}`);
+    } else {
+      if (!await sbsConfirm(`"${dsName}" veri kaynağını sözlükten silmek istiyor musunuz?`, 'Veri Kaynağını Sil')) return;
+      pushUndo();
+      state.report.dataSources = (state.report.dataSources || []).filter(x => x.name.toLowerCase() !== dsName.toLowerCase());
+      state.demoSources = (state.demoSources || []).filter(x => x.name.toLowerCase() !== dsName.toLowerCase());
+      renderDictionary();
+      setStatus(`Veri kaynağı silindi: ${dsName}`);
+    }
+  }
+
   let _dictCtxTarget = null; // { dsName, colName, isCustom }
   function showDictContextMenu(x, y, target) {
     hideContextMenu();
@@ -4334,8 +4332,8 @@
     if (!menu) return;
     const delItem = menu.querySelector('[data-dctx="delete"]');
     const editItem = menu.querySelector('[data-dctx="edit"]');
-    if (delItem) delItem.style.display = target.isCustom ? '' : 'none';
-    if (editItem) editItem.style.display = target.isCustom ? '' : 'none';
+    if (delItem) delItem.style.display = '';
+    if (editItem) editItem.style.display = '';
     positionCtxMenu(menu, x, y);
   }
 

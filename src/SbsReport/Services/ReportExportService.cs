@@ -125,7 +125,7 @@ public class ReportExportService
                     "CheckBox" => $"{(el.Checked ? "☑" : "☐")} {WebUtility.HtmlEncode(el.Text ?? el.Label ?? "")}",
                     "Radio" => $"{(el.Checked ? "⦿" : "○")} {WebUtility.HtmlEncode(el.Text ?? el.Label ?? "")}",
                     "Shape" or "Line" => "",
-                    _ => el.AllowHtmlTags ? RenderSafeInlineHtml(el.Text ?? "") : WebUtility.HtmlEncode(el.Text ?? "")
+                    _ => el.AllowHtmlTags ? $"<span style=\"display:block;width:100%;white-space:pre-wrap;text-align:{el.HAlign ?? "left"};\">{RenderSafeInlineHtml(el.Text ?? "")}</span>" : WebUtility.HtmlEncode(el.Text ?? "")
                 };
                 sb.AppendLine($"<div class=\"sbs-el\" style=\"{style}\">{inner}</div>");
             }

@@ -918,7 +918,11 @@
     if (comp.type === 'Input') {
       const inBox = document.createElement('div');
       inBox.className = 'comp-input-box';
-      inBox.textContent = comp.text || '';
+      if (comp.allowHtmlTags && comp.text) {
+        inBox.innerHTML = `<span style="display:block;width:100%;white-space:pre-wrap;">${renderSafeInlineHtml(comp.text)}</span>`;
+      } else {
+        inBox.textContent = comp.text || '';
+      }
       if (!comp.text && comp.placeholder) {
         const ph = document.createElement('span');
         ph.className = 'comp-input-placeholder';
@@ -1125,10 +1129,14 @@
       inner.className = 'comp-inner';
       inner.style.justifyContent = comp.hAlign === 'center' ? 'center' : comp.hAlign === 'right' ? 'flex-end' : comp.hAlign === 'justify' ? 'space-between' : 'flex-start';
       inner.style.alignItems = comp.vAlign === 'top' ? 'flex-start' : comp.vAlign === 'bottom' ? 'flex-end' : 'center';
+      if (comp.paddingTopMm || comp.paddingRightMm || comp.paddingBottomMm || comp.paddingLeftMm) {
+        inner.style.padding = `${mmToPx(comp.paddingTopMm || 0)}px ${mmToPx(comp.paddingRightMm || 0)}px ${mmToPx(comp.paddingBottomMm || 0)}px ${mmToPx(comp.paddingLeftMm || 0)}px`;
+        inner.style.boxSizing = 'border-box';
+      }
       if (comp.type === 'Shape') {
         inner.textContent = '';
       } else if (comp.allowHtmlTags) {
-        inner.innerHTML = renderSafeInlineHtml(comp.text ?? '');
+        inner.innerHTML = `<span style="display:block;width:100%;white-space:pre-wrap;text-align:${comp.hAlign || 'left'};">${renderSafeInlineHtml(comp.text ?? '')}</span>`;
       } else {
         inner.textContent = comp.text ?? '';
       }
@@ -1432,25 +1440,129 @@
     const panel = $('#propertiesPanel');
     if (!panel || !state.report) return;
     propCallbacks = [];
+    delete panel.dataset.alphaSorted;
 
-    // If target is Form : Form (EXACT REPLICA OF USER'S SCREENSHOT)
     if (state.inspectorTarget === '__form__' || (!state.selectedCompId && !state.selectedBandId)) {
       renderFormProperties(panel);
-      return;
-    }
-
-    if (state.inspectorTarget === '__page__') {
+    } else if (state.inspectorTarget === '__page__') {
       renderPageProperties(panel);
+    } else {
+      const { band, comp } = findSelected();
+      if (comp) {
+        renderComponentProperties(panel, comp);
+      } else if (band) {
+        renderBandProperties(panel, band);
+      } else {
+        renderFormProperties(panel);
+      }
+    }
+    applyInspectorViewAndFilter(panel);
+  }
+
+  const PROP_SEARCH_SYNONYMS = {
+    border: ['kenar', 'kenarlık', 'çerçeve'],
+    kenar: ['border', 'kenarlık', 'çerçeve', 'margin'],
+    padding: ['iç boşluk', 'boşluk'],
+    font: ['yazı', 'tipi', 'boyutu', 'kalın', 'italik'],
+    color: ['renk', 'rengi'],
+    background: ['arka plan', 'dolgu'],
+    width: ['genişlik'],
+    height: ['yükseklik'],
+    align: ['hiza', 'hizalama'],
+    radius: ['köşe', 'yuvarlama'],
+    html: ['html', 'etiket'],
+    visible: ['görünür', 'aktif', 'etkin'],
+    print: ['yazdır']
+  };
+
+  function normTr(str) {
+    return String(str || '').toLocaleLowerCase('tr-TR').trim();
+  }
+
+  function expandPropQuery(q) {
+    const base = normTr(q);
+    if (!base) return [];
+    const terms = new Set([base]);
+    for (const [k, vals] of Object.entries(PROP_SEARCH_SYNONYMS)) {
+      if (k.includes(base) || base.includes(k) || vals.some(v => v.includes(base) || base.includes(v))) {
+        terms.add(k);
+        vals.forEach(v => terms.add(v));
+      }
+    }
+    return [...terms];
+  }
+
+  function applyInspectorViewAndFilter(panel) {
+    if (!panel) return;
+    const prevEmpty = panel.querySelector('.prop-filter-empty');
+    if (prevEmpty) prevEmpty.remove();
+
+    // Alphabetical mode: flatten rows into a single sorted list
+    if (state.inspectorView === 'alphabetical' && !panel.dataset.alphaSorted) {
+      const allRows = [...panel.querySelectorAll('.prop-row')];
+      if (allRows.length > 0) {
+        allRows.sort((a, b) => {
+          const la = normTr(a.querySelector('label')?.textContent || a.textContent);
+          const lb = normTr(b.querySelector('label')?.textContent || b.textContent);
+          return la.localeCompare(lb, 'tr-TR');
+        });
+        const flat = document.createElement('div');
+        flat.className = 'prop-group';
+        allRows.forEach(r => flat.appendChild(r));
+        panel.innerHTML = '';
+        panel.appendChild(flat);
+        panel.dataset.alphaSorted = '1';
+      }
+    } else if (state.inspectorView !== 'alphabetical') {
+      delete panel.dataset.alphaSorted;
+    }
+
+    const q = ($('#inspectorFilterInput')?.value || '').trim();
+    const terms = expandPropQuery(q);
+    const groups = [...panel.querySelectorAll('.prop-group')];
+
+    if (terms.length === 0) {
+      groups.forEach(g => {
+        g.style.display = '';
+        g.querySelectorAll('.prop-row, .padding-4box, .prop-btn-row, .prop-sub-label, .cond-row').forEach(r => { r.style.display = ''; });
+      });
       return;
     }
 
-    const { band, comp } = findSelected();
-    if (comp) {
-      renderComponentProperties(panel, comp);
-    } else if (band) {
-      renderBandProperties(panel, band);
-    } else {
-      renderFormProperties(panel);
+    const matchesText = (txt) => {
+      const n = normTr(txt);
+      return terms.some(term => n.includes(term));
+    };
+
+    let anyVisible = false;
+    groups.forEach(g => {
+      const titleEl = g.querySelector('.prop-group-title');
+      const groupTitleMatches = titleEl ? matchesText(titleEl.textContent) : false;
+      const items = [...g.children].filter(ch => !ch.classList.contains('prop-group-title'));
+
+      if (groupTitleMatches) {
+        g.style.display = '';
+        items.forEach(it => { it.style.display = ''; });
+        anyVisible = true;
+        return;
+      }
+
+      let groupHasMatch = false;
+      items.forEach(it => {
+        const hit = matchesText(it.textContent) || matchesText(it.getAttribute('title') || '');
+        it.style.display = hit ? '' : 'none';
+        if (hit) groupHasMatch = true;
+      });
+      g.style.display = groupHasMatch ? '' : 'none';
+      if (groupHasMatch) anyVisible = true;
+    });
+
+    if (!anyVisible) {
+      const msg = document.createElement('div');
+      msg.className = 'prop-filter-empty';
+      msg.style.cssText = 'padding:16px 8px;text-align:center;color:var(--text-muted);font-size:11.5px;';
+      msg.textContent = `"${q}" ile eşleşen özellik bulunamadı.`;
+      panel.appendChild(msg);
     }
   }
 
@@ -1678,10 +1790,10 @@
       <div class="prop-group">
         <div class="prop-group-title">${t('pAppearance')}</div>
         ${propInput(t('pFontSize'), 'number', comp.fontSizePt, v => { comp.fontSizePt = parseFloat(v) || 10; })}
-        ${propColor(t('pTextColor'), comp.color || '#111827', v => { comp.color = v; }, false)}
+        ${propColor(t('pTextColor'), comp.color || '#111827', v => { comp.color = v; }, true)}
         ${propColor(t('pBackColor'), comp.backgroundColor || 'transparent', v => { comp.backgroundColor = v; }, true)}
         ${propInput(t('pBorderWidth'), 'number', comp.borderWidthPx || 0, v => { comp.borderWidthPx = parseFloat(v) || 0; })}
-        ${propColor(t('pBorderColor'), comp.borderColor || '#cbd5e1', v => { comp.borderColor = v; }, false)}
+        ${propColor(t('pBorderColor'), comp.borderColor || '#cbd5e1', v => { comp.borderColor = v; }, true)}
         ${propSelect(t('pBorderStyle'), ['Solid', 'Dashed', 'Dotted', 'Double'], comp.borderStyle || 'Solid', v => { comp.borderStyle = v; })}
         ${propInput(t('pCornerRadius'), 'number', comp.cornerRadiusPx || 0, v => { comp.cornerRadiusPx = parseFloat(v) || 0; })}
       </div>
@@ -1887,26 +1999,35 @@
 
   const STI_PALETTE = [
     { name: 'Şeffaf', hex: 'transparent' },
-    { name: 'Beyaz', hex: '#ffffff' },
     { name: 'Siyah', hex: '#000000' },
     { name: 'Koyu Gri', hex: '#111827' },
+    { name: 'Dim Gri', hex: '#475569' },
     { name: 'Gri', hex: '#64748b' },
-    { name: 'Açık Gri', hex: '#e2e8f0' },
-    { name: 'Kırmızı', hex: '#dc2626' },
+    { name: 'Gümüş', hex: '#94a3b8' },
+    { name: 'Açık Gri', hex: '#cbd5e1' },
+    { name: 'Duman Gri', hex: '#e2e8f0' },
+    { name: 'Beyaz', hex: '#ffffff' },
+    { name: 'Bordo', hex: '#7f1d1d' },
     { name: 'Koyu Kırmızı', hex: '#991b1b' },
+    { name: 'Kırmızı', hex: '#dc2626' },
+    { name: 'Mercan', hex: '#f87171' },
     { name: 'Turuncu', hex: '#ea580c' },
+    { name: 'Kehribar', hex: '#f59e0b' },
     { name: 'Sarı', hex: '#eab308' },
+    { name: 'Açık Sarı', hex: '#fef08a' },
+    { name: 'Koyu Yeşil', hex: '#14532d' },
     { name: 'Yeşil', hex: '#16a34a' },
     { name: 'Zümrüt', hex: '#059669' },
+    { name: 'Turkuaz', hex: '#0891b2' },
+    { name: 'Gök Mavi', hex: '#0284c7' },
     { name: 'Mavi', hex: '#2563eb' },
     { name: 'Lacivert', hex: '#1e3a8a' },
-    { name: 'Turkuaz', hex: '#0891b2' },
+    { name: 'Çivit', hex: '#4338ca' },
     { name: 'Mor', hex: '#7c3aed' },
     { name: 'Pembe', hex: '#db2777' },
     { name: 'Kahverengi', hex: '#78350f' },
     { name: 'Buz Mavi', hex: '#eff6ff' },
     { name: 'Açık Yeşil', hex: '#f0fdf4' },
-    { name: 'Açık Sarı', hex: '#fefce8' },
     { name: 'Açık Kırmızı', hex: '#fef2f2' },
     { name: 'Açık Mor', hex: '#faf5ff' },
     { name: 'Zebra Gri', hex: '#f8fafc' }
@@ -1923,7 +2044,7 @@
     if (_activeColorPop) { _activeColorPop.remove(); _activeColorPop = null; }
   }
   document.addEventListener('click', (e) => {
-    if (_activeColorPop && !_activeColorPop.contains(e.target) && !e.target.closest('.color-prop-btn')) {
+    if (_activeColorPop && !_activeColorPop.contains(e.target) && !e.target.closest('.color-prop-btn, .rcolor-btn, #bsColorBtn, #psWmColorBtn')) {
       closeColorPopover();
     }
   });
@@ -1932,27 +2053,37 @@
     closeColorPopover();
     const pop = document.createElement('div');
     pop.className = 'color-popover';
+    const curNorm = (currentVal || 'transparent').toLowerCase();
     const list = allowTransparent ? STI_PALETTE : STI_PALETTE.filter(c => c.hex !== 'transparent');
+    const gridList = STI_PALETTE.filter(c => c.hex !== 'transparent');
     const safeHex = (currentVal && currentVal.startsWith('#') && currentVal.length >= 4) ? currentVal : '#111827';
 
     pop.innerHTML = `
       <div class="color-pop-tabs">
         <button type="button" class="color-pop-tab active" data-ctab="grid">Palet</button>
-        <button type="button" class="color-pop-tab" data-ctab="named">İsimli Renkler</button>
+        <button type="button" class="color-pop-tab" data-ctab="named">Web</button>
         <button type="button" class="color-pop-tab" data-ctab="custom">Özel</button>
       </div>
-      <div class="color-pop-grid" data-cpane="grid">
-        ${list.map(c => `<div class="color-chip ${c.hex === 'transparent' ? 'is-transparent' : ''}" data-hex="${c.hex}" title="${c.name} (${c.hex})" style="${c.hex !== 'transparent' ? 'background:' + c.hex : ''}"></div>`).join('')}
-      </div>
-      <div class="color-named-list" data-cpane="named" hidden>
-        ${list.map(c => `<div class="color-named-item" data-hex="${c.hex}"><span class="color-swatch ${c.hex === 'transparent' ? 'is-transparent' : ''}" style="${c.hex !== 'transparent' ? 'background:' + c.hex : ''}"></span><span>${c.name}</span></div>`).join('')}
-      </div>
-      <div data-cpane="custom" hidden style="display:flex;flex-direction:column;gap:8px;">
-        <div style="display:flex;gap:6px;align-items:center;">
-          <input type="color" class="cp-native" value="${safeHex}" style="width:44px;height:28px;padding:1px;border:1px solid var(--border);background:var(--input-bg);border-radius:4px;" />
-          <input type="text" class="cp-hex rinput" value="${escapeHtml(currentVal || '')}" placeholder="#2563eb veya transparent" style="flex:1;height:28px;" />
+      <div class="color-pop-body">
+        <div data-cpane="grid">
+          ${allowTransparent ? `<button type="button" class="color-trans-btn ${curNorm === 'transparent' ? 'is-active' : ''}" data-hex="transparent"><span class="color-named-swatch is-transparent"></span><span>Şeffaf</span></button>` : ''}
+          <div class="color-pop-grid">
+            ${gridList.map(c => `<div class="color-chip ${curNorm === c.hex.toLowerCase() ? 'is-active' : ''}" data-hex="${c.hex}" title="${c.name} (${c.hex})" style="background:${c.hex}"></div>`).join('')}
+          </div>
         </div>
-        <button type="button" class="btn btn-primary rbtn-xs cp-apply" style="align-self:flex-end;">Uygula</button>
+        <div class="color-named-list" data-cpane="named" hidden>
+          ${list.map(c => `<div class="color-named-item ${curNorm === c.hex.toLowerCase() ? 'is-active' : ''}" data-hex="${c.hex}"><span class="color-named-swatch ${c.hex === 'transparent' ? 'is-transparent' : ''}" style="${c.hex !== 'transparent' ? 'background:' + c.hex : ''}"></span><span>${c.name}</span></div>`).join('')}
+        </div>
+        <div data-cpane="custom" hidden style="display:flex;flex-direction:column;gap:8px;padding-top:6px;">
+          <div style="display:flex;gap:5px;align-items:center;">
+            <input type="color" class="cp-native" value="${safeHex}" style="width:34px;height:26px;padding:1px;border:1px solid var(--border);background:var(--input-bg);border-radius:3px;cursor:pointer;" />
+            <input type="text" class="cp-hex rinput" value="${escapeHtml(currentVal || '')}" placeholder="#2563eb" style="flex:1;height:26px;font-size:11px;background:var(--input-bg);color:var(--text);border:1px solid var(--border);border-radius:3px;padding:0 6px;" />
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:4px;">
+            ${allowTransparent ? '<button type="button" class="btn btn-secondary rbtn-xs" data-hex="transparent">Şeffaf</button>' : '<span></span>'}
+            <button type="button" class="btn btn-primary rbtn-xs cp-apply">Uygula</button>
+          </div>
+        </div>
       </div>
     `;
 
@@ -1970,14 +2101,19 @@
     const hexInp = pop.querySelector('.cp-hex');
     if (nat && hexInp) {
       nat.oninput = () => { hexInp.value = nat.value; };
+      hexInp.onkeydown = (e) => { if (e.key === 'Enter') { onPick(hexInp.value.trim() || 'transparent'); closeColorPopover(); } };
       pop.querySelector('.cp-apply').onclick = () => { onPick(hexInp.value.trim() || 'transparent'); closeColorPopover(); };
     }
 
     document.body.appendChild(pop);
     _activeColorPop = pop;
     const rect = anchorEl.getBoundingClientRect();
-    const left = Math.min(rect.left, Math.max(8, window.innerWidth - 268));
-    const top = (rect.bottom + 240 > window.innerHeight) ? Math.max(8, rect.top - 220) : (rect.bottom + 4);
+    const popW = pop.offsetWidth || 214;
+    const popH = pop.offsetHeight || 216;
+    const left = Math.max(8, Math.min(rect.right - popW, window.innerWidth - popW - 8));
+    const top = (rect.bottom + popH + 8 > window.innerHeight)
+      ? Math.max(8, rect.top - popH - 4)
+      : (rect.bottom + 4);
     pop.style.left = `${left}px`;
     pop.style.top = `${top}px`;
   }
@@ -2410,6 +2546,9 @@
       $('#btnViewAlphabetical').classList.add('active');
       $('#btnViewCategorized').classList.remove('active');
       renderProperties();
+    });
+    $('#inspectorFilterInput')?.addEventListener('input', () => {
+      applyInspectorViewAndFilter($('#propertiesPanel'));
     });
 
     // Left Slim Tools (16 Tools)
@@ -3458,6 +3597,10 @@
         div.style.textDecoration = [el.underline ? 'underline' : '', el.strike ? 'line-through' : ''].filter(Boolean).join(' ') || 'none';
         div.style.justifyContent = el.hAlign === 'center' ? 'center' : el.hAlign === 'right' ? 'flex-end' : 'flex-start';
         div.style.alignItems = el.vAlign === 'top' ? 'flex-start' : el.vAlign === 'bottom' ? 'flex-end' : 'center';
+        if (el.paddingTopMm || el.paddingRightMm || el.paddingBottomMm || el.paddingLeftMm) {
+          div.style.padding = `${mmToPx(el.paddingTopMm || 0)}px ${mmToPx(el.paddingRightMm || 0)}px ${mmToPx(el.paddingBottomMm || 0)}px ${mmToPx(el.paddingLeftMm || 0)}px`;
+          div.style.boxSizing = 'border-box';
+        }
 
         if (el.cornerRadiusPx > 0) div.style.borderRadius = `${el.cornerRadiusPx}px`;
         const bStyle = (el.borderStyle || 'Solid').toLowerCase();
@@ -3476,7 +3619,9 @@
         // Live Interactive Preview Controls
         if (el.type === 'Input') {
           div.className += ' comp-input-box';
-          if (el.wordWrap && el.heightMm > 12) {
+          if (el.allowHtmlTags) {
+            div.innerHTML = `<div class="interactive-input" contenteditable="true" style="white-space:pre-wrap;overflow:auto;width:100%;height:100%;padding:2px 4px;display:block;">${renderSafeInlineHtml(el.text || '')}</div>`;
+          } else if (el.wordWrap && el.heightMm > 12) {
             div.innerHTML = `<textarea class="interactive-input" placeholder="${escapeHtml(el.placeholder || '')}">${escapeHtml(el.text || '')}</textarea>`;
           } else {
             div.innerHTML = `<input type="text" class="interactive-input" value="${escapeHtml(el.text || '')}" placeholder="${escapeHtml(el.placeholder || '')}" />`;
@@ -3522,7 +3667,7 @@
           div.innerHTML = buildChartSvg(el.chartType || 'Bar', el.chartData);
         } else {
           if (el.allowHtmlTags) {
-            div.innerHTML = renderSafeInlineHtml(el.text || '');
+            div.innerHTML = `<span style="display:block;width:100%;white-space:pre-wrap;text-align:${el.hAlign || 'left'};">${renderSafeInlineHtml(el.text || '')}</span>`;
           } else {
             div.textContent = el.text || '';
           }
@@ -5139,7 +5284,7 @@
     } else {
       issues.forEach(iss => {
         const row = document.createElement('div');
-        row.style.cssText = 'display:flex;align-items:flex-start;gap:8px;padding:8px 10px;border:1px solid var(--border);border-radius:6px;cursor:pointer;background:var(--panel-bg);font-size:12px;';
+        row.style.cssText = 'display:flex;align-items:flex-start;gap:8px;padding:8px 10px;border:1px solid var(--border);border-radius:6px;cursor:pointer;background:var(--card2);font-size:12px;';
         const ico = iss.severity === 'error' ? '🔴' : '🟡';
         row.innerHTML = `<span>${ico}</span><div style="flex:1;"><div style="font-weight:600;">${escapeHtml(iss.target)} <span style="font-weight:400;opacity:.65;font-size:10.5px;">[${iss.rule}]</span></div><div style="color:var(--text-muted);margin-top:2px;">${escapeHtml(iss.message)}</div></div>`;
         row.onclick = () => {

@@ -4,6 +4,13 @@ Bu projedeki tüm önemli değişiklikler bu dosyada belgelenir.
 
 Format [Keep a Changelog](https://keepachangelog.com/tr/1.0.0/) standardına ve [Semantic Versioning](https://semver.org/) sürümleme kurallarına uygundur.
 
+## [1.0.10] - 2026-11-24
+
+### İyileştirilenler — NuGet Paketi & Dokümantasyon
+- **Saf Markdown NuGet README (`NUGET_README.md`):** NuGet.org ve Visual Studio NuGet Paket Yöneticisi'nde ham HTML etiketleri (`<div>`, `<h3>`, `<details>`, `<table>`) ve Mermaid blokları yüzünden oluşan boş/bozuk görünüm giderildi; %100 saf CommonMark/GFM Markdown ile paketlendi.
+- **Paket İkonu (`icon.png`):** NuGet.org ve Visual Studio paket listeleri için `128×128` PNG Sobis paket ikonu eklendi.
+- **Güncel GitHub `README.md`:** `v1.0.9` ile gelen 12 dışa aktarım formatı (OOXML `.docx` dahil), yeni ifade fonksiyonları, bileşenler ve Web Designer kısayolları eklendi.
+
 ## [1.0.9] - 2026-11-24
 
 ### Eklenenler — Rapor Motoru & Bileşenler

@@ -10,7 +10,7 @@
     <!-- NuGet Package Metadata -->
     <IsPackable>true</IsPackable>
     <PackageId>SbsReport</PackageId>
-    <Version>1.0.9</Version>
+    <Version>1.0.10</Version>
     <Authors>Serdar ÖZDEMİR (Sobis)</Authors>
     <Company>Sobis</Company>
     <Copyright>Copyright (c) 2026 Serdar ÖZDEMİR / Sobis</Copyright>
@@ -18,16 +18,18 @@
     <PackageTags>reporting;report-engine;pdf;excel;xlsx;docx;ooxml;word;designer;viewer;aspnetcore;dotnet;dotnet10;zero-dependency;headless;wysiwyg;SbsReport</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageIcon>icon.png</PackageIcon>
     <PackageProjectUrl>https://github.com/iventhosting/SbsReport</PackageProjectUrl>
     <RepositoryUrl>https://github.com/iventhosting/SbsReport</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
-    <PackageReleaseNotes>1.0.9: Motor: GrowToHeight, ShrinkFontToFit, ProcessingDuplicates (Hide/Merge), PrintOn, PrintAtBottom, ResetPageNumber, KeepGroupTogether, HideZeros, MaxNumberOfLines, ImageFit, AllowHtmlTags (Text ve çok satırlı Input desteği), EmptyBand, OverlayBand, çok sütunlu DataBand (Columns), TextInCells (TC/IBAN kutucukları) ve Hesaplanan Sütunlar. İfade Motoru: ToCurrencyWordsTr, ToWordsTr, CountDistinct, SumDistinct, RunningSum, Median, First/Last, Tarih/Metin/Switch fonksiyonları. Export: Gerçek OOXML .docx ve sayısal hücre/sütun genişliği destekli gelişmiş .xlsx. Web Designer: Canlı Rapor Denetleyici, Stil Tasarımcısı, Kenarlık Ayarları, sabit boyutlu Sayfa Yapısı ve İfade Düzenleyici, kompakt 3 sekmeli Şeffaf destekli renk paleti, canlı özellik filtreleme ve alfabetik sıralama, 4 ayrı sağ tık menüsü, tıklayınca anında görünen 8 boyutlandırma tutamacı, Shift+Ok boyutlandırma / Ctrl+Ok taşıma, tam sayfa önizleme, tema uyumlu özel diyaloglar ve Sobis ikonu.</PackageReleaseNotes>
+    <PackageReleaseNotes>1.0.10: NuGet ve Visual Studio için sıfır ham HTML içeren saf Markdown README ve Sobis paket ikonu (icon.png) eklendi. 1.0.9 yeniliklerinin tamamını içerir: OOXML .docx, gelişmiş sayısal .xlsx, AllowHtmlTags (Text &amp; Input), TextInCells, Hesaplanan Sütunlar, ToCurrencyWordsTr, Canlı Rapor Denetleyici, Stil Tasarımcısı, kompakt 3 sekmeli renk paleti, canlı özellik filtreleme, Shift+Ok boyutlandırma ve Ctrl+Ok taşıma.</PackageReleaseNotes>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>$(NoWarn);CS1591</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
-    <None Include="..\..\README.md" Pack="true" PackagePath="\" />
+    <None Include="NUGET_README.md" Pack="true" PackagePath="\README.md" />
+    <None Include="icon.png" Pack="true" PackagePath="\" />
   </ItemGroup>
 
   <ItemGroup>

@@ -126,21 +126,21 @@ byte[] htmlBytes  = sbsEngine.ExportFromSnapshot(snapshotBytes, "html");
 
 Tek bir NuGet paketiyle uygulamanızın içine gömülen tam teşekküllü sürükle-bırak rapor tasarımcısı:
 
-- **Bant Mimarisi:** `ReportTitle`, `PageHeader`, `GroupHeader`, `Header`, `Data`, `Table`, `HierarchicalData`, `Footer`, `GroupFooter`, `ReportSummary`, `PageFooter` — **sürükle-bırak ile bant sıralama**, klavye okları (`↑`/`↓`, `Shift+↑/↓`) ve fare tutamacıyla **üst üste binmeyen yükseklik ayarlama**.
+- **Bant Mimarisi:** `ReportTitle`, `PageHeader`, `GroupHeader`, `Header`, `Data` (çok sütunlu `Columns` 1–12), `Table`, `HierarchicalData`, `EmptyBand`, `OverlayBand`, `Footer`, `GroupFooter`, `ReportSummary`, `PageFooter` — **sürükle-bırak ile bant sıralama**, klavye okları ve fare tutamacıyla **üst üste binmeyen yükseklik ayarlama**.
 - **Master Form Kalıtımı:** Kurumsal antet ve altbilgiyi tek bir Master şablonda (`IsMasterTemplate = true`) tanımlayın; tüm raporlar otomatik miras alsın.
-- **16 Bileşen:** Metin, Giriş Kutusu, Onay Kutusu, Radyo, Açılır Liste, Tarih Seçici, İmza, Buton, Resim/Logo (Base64 PNG/JPG), Şekil, Çizgi, Barkod/QR, Grafik, Etkileşimli Tablo (`+Satır/+Sütun`), Panel.
-- **Modern UX:** Çoklu sayfa sekmeleri, cetveller, akıllı hizalama çizgileri, canlı **Önizleme & PDF Önizleme**, Açık/Koyu tema, canlı **TR / EN** dil desteği ve **Türkçe duyarsız veri eşleştirme** (`{Data.Ünvan}` ↔ `UNVAN`).
+- **Zengin Bileşenler:** Metin (`AllowHtmlTags`, `GrowToHeight`, `ShrinkFontToFit`, `ProcessingDuplicates`, `HideZeros`), **`TextInCells`** (TC/IBAN karakter kutucukları), Giriş Kutusu (çok satırlı HTML destekli), Onay Kutusu, Radyo, Açılır Liste, Tarih Seçici, İmza, Buton, Resim/Logo (`ImageFit`), Şekil, Çizgi, Barkod/QR, Grafik, Etkileşimli Tablo (`+Satır/+Sütun`), Panel.
+- **Kurumsal IDE Araçları:** Canlı **Rapor Denetleyici**, **Stil Tasarımcısı**, **Kenarlık Ayarları**, sabit boyutlu **Sayfa Yapısı** ve **İfade Düzenleyici**, **Hesaplanan Sütunlar**, kompakt 3 sekmeli Şeffaf destekli renk paleti (`Palet` / `Web` / `Özel`), canlı özellik arama/filtreleme ve alfabetik sıralama, 4 ayrı sağ tık menüsü (Obje / Bant / Sayfa / Sözlük), tıklayınca anında görünen 8 boyutlandırma tutamacı, **`Shift+Ok`** ızgara adımı boyutlandırma / **`Ctrl+Ok`** taşıma, Açık/Koyu tema ve canlı **TR / EN** dil desteği.
 
 ---
 
-## 📦 11 Yerel Dışa Aktarma Formatı
+## 📦 12 Yerel Dışa Aktarma Formatı
 
 | Format | Uzantı | Özellik |
 | :--- | :---: | :--- |
 | **PDF 1.4** | `.pdf` | Saf C# `SbsPdfWriter`, TrueType `glyf/loca` font subsetting, 1-byte Türkçe Win1254 + Unicode CID, `/ToUnicode` |
-| **Excel** | `.xlsx` | Gerçek ECMA-376 OOXML ZIP paketi (`ZipArchive`), uyarı vermeden açılır, kalın/kenarlık stilli, `inlineStr` korumalı |
-| **Word** | `.doc` | Ofis uyumlu HTML/Word çıktısı, tablo ve sayfa sonu destekli |
-| **HTML5** | `.html` | Birebir `mm` koordinatlı, `@media print` + `print-color-adjust: exact` yazdırma destekli |
+| **Excel** | `.xlsx` | Gerçek ECMA-376 OOXML ZIP paketi (`ZipArchive`), gerçek sayısal hücre (`#,##0.00`), kimlik/tarih koruması, otomatik sütun genişliği |
+| **Word** | `.docx` / `.doc` | Gerçek ECMA-376 OOXML Word (`.docx`) ve ofis uyumlu `.doc` çıktısı |
+| **HTML5** | `.html` | Birebir `mm` koordinatlı, XSS korumalı `AllowHtmlTags` ve `@media print` + `print-color-adjust: exact` yazdırma destekli |
 | **Snapshot** | `.sbsdoc` | `SBSS` ikili format + String Interning + GZip (28x daha küçük) |
 | **CSV** | `.csv` | UTF-8 BOM + `;` ayraç (Türkçe Excel doğrudan bozulmadan açar) |
 | **RTF / TXT / XML / JSON / SVG** | `.rtf` `.txt` `.xml` `.json` `.svg` | Entegrasyon, arşivleme ve vektör önizleme formatları |
@@ -153,9 +153,10 @@ Tek bir NuGet paketiyle uygulamanızın içine gömülen tam teşekküllü sür�
 <summary><b>Desteklenen ifade, toplama fonksiyonları ve sistem değişkenlerini görüntüle</b></summary>
 
 - **Veri Alanları:** `{SqlDataSource1.AD_SOYAD}`, `{Data.UNVAN}` (Türkçe karakter ve büyük/küçük harf duyarsız)
-- **Toplama Fonksiyonları:** `{Sum(Data.TUTAR)}`, `{Count(Data.ID)}`, `{Avg(Data.PUAN)}`, `{Min(Data.TARIH)}`, `{Max(Data.TUTAR)}`
-- **Koşul & Formatlama:** `{IIF(Data.DURUM == 'E', 'Aktif', 'Pasif')}`, `{Format("{0:dd.MM.yyyy}", Data.BAS_TAR)}`
-- **Sistem Değişkenleri:** `{PageNumber}`, `{TotalPageCount}`, `{Line}`, `{Today}`, `{Time}`, `{ReportName}`
+- **Türkçe Yazıyla Tutar & Sayı:** `{ToCurrencyWordsTr(Sum(Data.TUTAR))}`, `{ToWordsTr(Data.ADET)}`
+- **Toplama & Analiz Fonksiyonları:** `Sum`, `Count`, `Avg`, `Min`, `Max`, `CountDistinct`, `SumDistinct`, `RunningSum`, `RunningCount`, `Median`, `First`, `Last`
+- **Metin, Tarih, Mantık & Matematik:** `IIF`, `Switch`, `Choose`, `Format`, `Left`, `Right`, `Substring`, `Replace`, `ProperCase`, `DateDiff`, `MonthName`, `AddDays`, `Ceiling`, `Floor`, `Pow`, `Sqrt`
+- **Sistem Değişkenleri:** `{PageNumber}`, `{TotalPageCount}`, `{PageNofM}`, `{IsFirstPage}`, `{IsLastPage}`, `{Line}`, `{GroupLine}`, `{LineThrough}`, `{Today}`, `{Time}`, `{ReportName}`
 
 </details>
 
@@ -168,7 +169,8 @@ Tek bir NuGet paketiyle uygulamanızın içine gömülen tam teşekküllü sür�
 | `Ctrl + Z` / `Ctrl + Y` | Geri al / Yinele |
 | `Ctrl + C` / `Ctrl + V` | Seçili bileşeni kopyala / yapıştır |
 | `Delete` | Seçili bileşeni sil |
-| `↑` `↓` `←` `→` (`Shift` ile `5 mm`) | Bileşen seçiliyse konum kaydır; **bant seçiliyse yüksekliği büyüt/küçült** |
+| `Ctrl + ↑ ↓ ← →` (veya `↑ ↓ ← →`) | Bileşeni ızgara adımı kadar taşı |
+| `Shift + ↑ ↓ ← →` | Seçili bileşenin genişlik / yüksekliğini ızgara adımı kadar büyüt / küçült |
 
 </details>
 

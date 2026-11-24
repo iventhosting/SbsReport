@@ -124,7 +124,11 @@ public class SbsDataSource
 public class SbsColumn
 {
     public string Name { get; set; } = string.Empty;
+    public string? Alias { get; set; }
+    public string? NameInSource { get; set; }
     public string DataType { get; set; } = "string"; // string | number | date | boolean
+    public bool IsCalculated { get; set; }
+    public string? Expression { get; set; }
 }
 
 public class SbsBand
@@ -145,6 +149,13 @@ public class SbsBand
     public bool PrintOnAllPages { get; set; } = true;
     public bool NewPageBefore { get; set; }
     public bool NewPageAfter { get; set; }
+    public bool Enabled { get; set; } = true;
+    public string PrintOn { get; set; } = "AllPages"; // AllPages | ExceptFirstPage | ExceptLastPage | OnlyFirstPage | OnlyLastPage
+    public bool PrintAtBottom { get; set; }
+    public bool ResetPageNumber { get; set; }
+    public bool KeepGroupTogether { get; set; }
+    public int Columns { get; set; } = 1;
+    public double ColumnGapsMm { get; set; } = 4;
     public string? KeyDataColumn { get; set; }
     public string? MasterKeyDataColumn { get; set; }
     public double IndentMm { get; set; } = 8;
@@ -159,6 +170,9 @@ public class SbsCondition
     public string? TextColor { get; set; }
     public string? BackgroundColor { get; set; }
     public bool? Bold { get; set; }
+    public bool? Italic { get; set; }
+    public bool? Underline { get; set; }
+    public string? BorderColor { get; set; }
     public bool? Visible { get; set; }
 }
 
@@ -189,6 +203,7 @@ public class SbsComponent
     public string VAlign { get; set; } = "middle"; // top | middle | bottom
     public string? Format { get; set; }
     public bool WordWrap { get; set; } = true;
+    public bool AllowHtmlTags { get; set; }
     public double Angle { get; set; } = 0;
 
     // Padding (mm)
@@ -211,11 +226,17 @@ public class SbsComponent
 
     // Media & Shape
     public string? ImageUrl { get; set; }
+    public string ImageFit { get; set; } = "Contain"; // Contain (Orantılı) | Fill (Ger/Stretch) | Cover (Kırp) | None (Orijinal)
     public string? ShapeType { get; set; } = "Rectangle"; // Rectangle | RoundedRectangle | Ellipse | Triangle
     public string? LineOrientation { get; set; } = "Horizontal"; // Horizontal | Vertical | Slant
 
     // Barcode
     public string BarcodeFormat { get; set; } = "Code128"; // Code128 | QR | EAN13
+
+    // TextInCells (TC Kimlik No / IBAN / Vergi No kutucuklu metin)
+    public int CellCount { get; set; } = 0; // 0 = genişliğe göre otomatik
+    public double CellWidthMm { get; set; } = 5;
+    public double CellGapMm { get; set; } = 0.8;
 
     // Chart
     public string? ChartType { get; set; } = "Bar"; // Bar | Line | Pie | Doughnut
@@ -224,8 +245,17 @@ public class SbsComponent
     public string? ValueField { get; set; }
 
     // Behaviors
+    public bool Enabled { get; set; } = true;
+    public bool Printable { get; set; } = true;
     public bool CanGrow { get; set; }
     public bool CanShrink { get; set; }
+    public bool GrowToHeight { get; set; }
+    public bool ShrinkFontToFit { get; set; }
+    public double ShrinkFontToFitMinPt { get; set; } = 6;
+    public bool HideZeros { get; set; }
+    public int MaxNumberOfLines { get; set; } = 0; // 0 = sınırsız
+    public string ProcessingDuplicates { get; set; } = "None"; // None | Hide | Merge
+    public string PrintOn { get; set; } = "AllPages"; // AllPages | ExceptFirstPage | ExceptLastPage | OnlyFirstPage | OnlyLastPage
     public bool Locked { get; set; }
     public List<SbsCondition>? Conditions { get; set; }
 }

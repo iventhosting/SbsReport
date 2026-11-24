@@ -10,18 +10,18 @@
     <!-- NuGet Package Metadata -->
     <IsPackable>true</IsPackable>
     <PackageId>SbsReport</PackageId>
-    <Version>1.0.8</Version>
+    <Version>1.1.0</Version>
     <Authors>Serdar ÖZDEMİR (Sobis)</Authors>
     <Company>Sobis</Company>
     <Copyright>Copyright (c) 2026 Serdar ÖZDEMİR / Sobis</Copyright>
-    <Description>Sıfır harici bağımlılıklı, yüksek performanslı, açık kaynak (MIT) .NET 10 raporlama motoru ve gömülü Web Designer IDE. Saf C# streaming PDF 1.4 üretici (TrueType glyf/loca font subsetting, tam Türkçe destek), gerçek OOXML Excel (.xlsx) ihracı, 28x küçük ikili Snapshot (.sbsdoc), 11 dışa aktarım formatı ve Master Form desteği sunar. 100.000 satırı 5.2 saniyede PDF'e, 2.1 saniyede Excel'e dönüştürür.</Description>
-    <PackageTags>reporting;report-engine;pdf;excel;xlsx;ooxml;word;designer;viewer;aspnetcore;dotnet;dotnet10;zero-dependency;headless;wysiwyg;SbsReport</PackageTags>
+    <Description>Sıfır harici bağımlılıklı, yüksek performanslı, açık kaynak (MIT) .NET 10 raporlama motoru ve gömülü Web Designer IDE. Saf C# streaming PDF 1.4 üretici (TrueType glyf/loca font subsetting, tam Türkçe destek), gerçek OOXML Excel (.xlsx) ve Word (.docx) ihracı, 28x küçük ikili Snapshot (.sbsdoc), 12 dışa aktarım formatı, Master Form, TextInCells, Hesaplanan Sütunlar, Rapor Denetleyici ve zengin ifade motoru (ToCurrencyWordsTr) sunar.</Description>
+    <PackageTags>reporting;report-engine;pdf;excel;xlsx;docx;ooxml;word;designer;viewer;aspnetcore;dotnet;dotnet10;zero-dependency;headless;wysiwyg;SbsReport</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageProjectUrl>https://github.com/iventhosting/SbsReport</PackageProjectUrl>
     <RepositoryUrl>https://github.com/iventhosting/SbsReport</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
-    <PackageReleaseNotes>1.0.8: Veri kaynağı bağlanmamış Data bandı artık kayıt sayısı kadar tekrar etmiyor, bir kez basılıyor. Web Designer: bant silme ve Master Yap ile çıkarılan bantların geri gelmesi düzeltildi; yerleşim sihirbazındaki onay kutusu listesi hizalandı.</PackageReleaseNotes>
+    <PackageReleaseNotes>1.1.0: Motor: GrowToHeight, ShrinkFontToFit, ProcessingDuplicates (Hide/Merge), PrintOn, PrintAtBottom, ResetPageNumber, KeepGroupTogether, HideZeros, MaxNumberOfLines, ImageFit (Stretch), AllowHtmlTags, EmptyBand, OverlayBand, çok sütunlu DataBand (Columns), TextInCells (TC/IBAN kutucukları) ve Hesaplanan Sütunlar. İfade Motoru: ToCurrencyWordsTr, ToWordsTr, CountDistinct, SumDistinct, RunningSum, Median, First/Last, Tarih/Metin/Switch fonksiyonları. Export: Gerçek OOXML .docx ve sayısal hücre/sütun genişliği destekli gelişmiş .xlsx. Web Designer: Canlı Rapor Denetleyici, Stil Tasarımcısı, Kenarlık Ayarları, sabit boyutlu Sayfa Yapısı ve İfade Düzenleyici, 3 sekmeli renk paleti, 4 ayrı sağ tık menüsü (Obje/Bant/Sayfa/Sözlük), tema uyumlu özel diyaloglar (sıfır tarayıcı alert/confirm/prompt) ve Sobis ikonu.</PackageReleaseNotes>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>$(NoWarn);CS1591</NoWarn>
   </PropertyGroup>

@@ -4,6 +4,23 @@ Bu projedeki tüm önemli değişiklikler bu dosyada belgelenir.
 
 Format [Keep a Changelog](https://keepachangelog.com/tr/1.0.0/) standardına ve [Semantic Versioning](https://semver.org/) sürümleme kurallarına uygundur.
 
+## [1.1.0] - 2026-11-24
+
+### Eklenenler — Rapor Motoru & Bileşenler
+- **Bant & Sayfa Davranışları:** `GrowToHeight`, `ShrinkFontToFit`, `ProcessingDuplicates` (`None` / `Hide` / `Merge`), `PrintOn` (`AllPages`, `ExceptFirstPage`, `ExceptLastPage`, `OnlyFirstPage`, `OnlyLastPage`), `PrintAtBottom`, `ResetPageNumber`, `KeepGroupTogether`, `Enabled`, `Printable`, `HideZeros` (Sıfırları Gizle), `MaxNumberOfLines` ve `ImageFit` (`Contain` / `Fill` / `Cover` / `None`).
+- **Yeni Bant & Bileşen Yetenekleri:** `EmptyBand` (sayfa sonuna kadar otomatik boş satır doldurma), `OverlayBand` (arka plan katmanı), Çok Sütunlu `DataBand` (`Columns` 1–12, `ColumnGapsMm`), **`TextInCells`** (TC Kimlik No / IBAN / Vergi No karakter kutucukları), XSS korumalı **`AllowHtmlTags`** (`<b>`, `<i>`, `<u>`, `<br/>`, `<color=#hex>`) ve **Hesaplanan Sütunlar (`SbsColumn.IsCalculated` / `Expression`)**.
+- **İfade Motoru (`ExpressionEvaluator`):** Türkçe yazıyla tutar/sayı (`ToCurrencyWordsTr`, `ToWordsTr`), yeni özet fonksiyonları (`CountDistinct`, `SumDistinct`, `RunningSum`, `RunningCount`, `Median`, `First`, `Last`), metin/tarih/mantık/matematik fonksiyonları (`Left`, `Right`, `Substring`, `Replace`, `ProperCase`, `DateDiff`, `MonthName`, `AddDays`, `Switch`, `Choose`, `Ceiling`, `Floor`, `Pow`, `Sqrt`) ve yeni sistem değişkenleri (`PageNofM`, `IsFirstPage`, `IsLastPage`, `GroupLine`, `LineThrough`, `Time`).
+
+### Eklenenler — Dışa Aktarım (Export)
+- **Gerçek OOXML Microsoft Word (`.docx`):** Saf C# `ZipArchive` ile ECMA-376 uyumlu, uyarı vermeden açılan Word belgesi ihracı.
+- **Gelişmiş OOXML Excel (`.xlsx`):** Türkçe para/sayı değerleri için gerçek sayısal hücre (`t="n"`, `#,##0.00` / `#,##0`), tarih ve sıfırla başlayan kimlik numarası koruması, ilk sayfadan O(1) otomatik sütun genişliği (`<cols>`).
+
+### Eklenenler & İyileştirilenler — Web Designer IDE
+- **Canlı Rapor Denetleyici (`Report Checker`):** Alt durum çubuğunda canlı hata/uyarı sayacı ve tek tıkla ilgili bileşene odaklanma.
+- **Yeni Diyaloglar (Sabit Yükseklikli):** Stil Tasarımcısı (`✨ Stiller`), Gelişmiş Kenarlık Ayarları (`⊞ Border Setup`), sağ ikon menülü ve canlı önizlemeli Sayfa Yapısı (`⚙ Sayfa Yapısı` — boş sayfaya çift tıkla da açılır), Yeni/Hesaplanan Sütun editörü (`#colEditorModal`) ve aramalı/HTML araç çubuklu yeni İfade Düzenleyici.
+- **4 Ayrı Sağ Tık Menüsü:** Obje (`#ctxMenu`), Bant (`#ctxBandMenu`), Sayfa/Form (`#ctxPageMenu`) ve Sözlük (`#ctxDictMenu` — veri kaynağı/sütun ekleme, hesaplanan sütun, düzenleme ve silme).
+- **Modern UI & Tema Tutarlılığı:** 3 sekmeli renk paleti (`Palet` / `İsimli Renkler` / `Özel`), belirgin seçim vurgusu, sabit `14px` checkbox'lar, Sobis ikonu (`favicon.ico`) ve tüm tarayıcı `alert`/`confirm`/`prompt` pencerelerinin tema uyumlu `#sbsDialogModal` ile değiştirilmesi.
+
 ## [1.0.8] - 2026-11-24
 
 ### Düzeltilenler

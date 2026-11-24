@@ -356,8 +356,8 @@ internal static class SbsPdfWriter
                         el.Type.Equals("Image", StringComparison.OrdinalIgnoreCase))
                         continue;
 
-                    var txt = el.Text;
-                    if (el.Type == "CheckBox") txt = (el.Checked ? "[X] " : "[ ] ") + (el.Text ?? el.Label ?? "");
+                    var txt = el.AllowHtmlTags ? ReportRenderEngine.StripInlineHtmlTags(el.Text) : el.Text;
+                    if (el.Type == "CheckBox") txt = (el.Checked ? "[X] " : "[ ] ") + (txt ?? el.Label ?? "");
                     else if (el.Type == "Radio") txt = (el.Checked ? "(*) " : "( ) ") + (el.Text ?? el.Label ?? "");
                     if (string.IsNullOrWhiteSpace(txt)) continue;
 

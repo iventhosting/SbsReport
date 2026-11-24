@@ -83,6 +83,8 @@ public static class SbsReportExtensions
         group.MapGet("/styles.css", () => ServeEmbeddedAsset("styles.css", "text/css; charset=utf-8"));
         group.MapGet("/i18n.js", () => ServeEmbeddedAsset("i18n.js", "application/javascript; charset=utf-8"));
         group.MapGet("/app.js", () => ServeEmbeddedAsset("app.js", "application/javascript; charset=utf-8"));
+        group.MapGet("/favicon.ico", () => ServeEmbeddedAsset("favicon.ico", "image/x-icon"));
+        endpoints.MapGet("/favicon.ico", () => ServeEmbeddedAsset("favicon.ico", "image/x-icon"));
 
         var api = group.MapGroup("/api");
 

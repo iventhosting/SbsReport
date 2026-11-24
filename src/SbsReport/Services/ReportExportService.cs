@@ -43,7 +43,8 @@ public class ReportExportService
         {
             "pdf" => (ExportPdf(rendered), "application/pdf", ".pdf"),
             "xlsx" or "xls" or "excel" => (ExportXlsx(rendered), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", ".xlsx"),
-            "docx" or "doc" or "word" => (ExportWordHtml(rendered), "application/msword", ".doc"),
+            "docx" or "word" => (ExportDocx(rendered), "application/vnd.openxmlformats-officedocument.wordprocessingml.document", ".docx"),
+            "doc" => (ExportWordHtml(rendered), "application/msword", ".doc"),
             "html" or "htm" => (ExportHtml(rendered), "text/html; charset=utf-8", ".html"),
             "csv" => (ExportCsv(rendered), "text/csv; charset=utf-8", ".csv"),
             "xml" => (ExportXml(rendered), "application/xml; charset=utf-8", ".xml"),
@@ -120,11 +121,11 @@ public class ReportExportService
 
                 string inner = el.Type switch
                 {
-                    "Image" when !string.IsNullOrWhiteSpace(el.ImageUrl) => $"<img src=\"{WebUtility.HtmlEncode(el.ImageUrl)}\" style=\"max-width:100%;max-height:100%;object-fit:contain;\"/>",
+                    "Image" when !string.IsNullOrWhiteSpace(el.ImageUrl) => $"<img src=\"{WebUtility.HtmlEncode(el.ImageUrl)}\" style=\"width:100%;height:100%;object-fit:{(el.ImageFit ?? "contain").ToLowerInvariant()};\"/>",
                     "CheckBox" => $"{(el.Checked ? "☑" : "☐")} {WebUtility.HtmlEncode(el.Text ?? el.Label ?? "")}",
                     "Radio" => $"{(el.Checked ? "⦿" : "○")} {WebUtility.HtmlEncode(el.Text ?? el.Label ?? "")}",
                     "Shape" or "Line" => "",
-                    _ => WebUtility.HtmlEncode(el.Text ?? "")
+                    _ => el.AllowHtmlTags ? RenderSafeInlineHtml(el.Text ?? "") : WebUtility.HtmlEncode(el.Text ?? "")
                 };
                 sb.AppendLine($"<div class=\"sbs-el\" style=\"{style}\">{inner}</div>");
             }
@@ -196,11 +197,15 @@ public class ReportExportService
                 "<border><left style=\"thin\"><color rgb=\"FFCBD5E1\"/></left><right style=\"thin\"><color rgb=\"FFCBD5E1\"/></right><top style=\"thin\"><color rgb=\"FFCBD5E1\"/></top><bottom style=\"thin\"><color rgb=\"FFCBD5E1\"/></bottom><diagonal/></border>" +
                 "</borders>" +
                 "<cellStyleXfs count=\"1\"><xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\"/></cellStyleXfs>" +
-                "<cellXfs count=\"4\">" +
+                "<cellXfs count=\"8\">" +
                 "<xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\" xfId=\"0\"/>" +
                 "<xf numFmtId=\"0\" fontId=\"1\" fillId=\"0\" borderId=\"0\" xfId=\"0\"/>" +
                 "<xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"1\" xfId=\"0\"/>" +
                 "<xf numFmtId=\"0\" fontId=\"1\" fillId=\"2\" borderId=\"1\" xfId=\"0\"/>" +
+                "<xf numFmtId=\"4\" fontId=\"0\" fillId=\"0\" borderId=\"1\" xfId=\"0\" applyNumberFormat=\"1\"/>" +
+                "<xf numFmtId=\"4\" fontId=\"1\" fillId=\"2\" borderId=\"1\" xfId=\"0\" applyNumberFormat=\"1\"/>" +
+                "<xf numFmtId=\"3\" fontId=\"0\" fillId=\"0\" borderId=\"1\" xfId=\"0\" applyNumberFormat=\"1\"/>" +
+                "<xf numFmtId=\"3\" fontId=\"1\" fillId=\"2\" borderId=\"1\" xfId=\"0\" applyNumberFormat=\"1\"/>" +
                 "</cellXfs>" +
                 "</styleSheet>");
 
@@ -208,7 +213,35 @@ public class ReportExportService
             var sheetEntry = zip.CreateEntry("xl/worksheets/sheet1.xml", CompressionLevel.Optimal);
             using var sw = new StreamWriter(sheetEntry.Open(), new UTF8Encoding(false), 65536);
             sw.Write("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>");
-            sw.Write("<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><sheetData>");
+            sw.Write("<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">");
+
+            // Sample first page for smart Excel column widths (O(page1) — preserves 100k-row streaming speed!)
+            if (r.Pages.Count > 0)
+            {
+                var colWidths = new Dictionary<int, double>();
+                var sampleRows = r.Pages[0].Elements
+                    .Where(e => !string.IsNullOrWhiteSpace(e.Text))
+                    .GroupBy(e => Math.Round(e.YMm / 3.5));
+                foreach (var sr in sampleRows)
+                {
+                    int c = 1;
+                    foreach (var cell in sr.OrderBy(e => e.XMm))
+                    {
+                        double w = Math.Clamp(Math.Max((cell.Text?.Length ?? 0) + 3, cell.WidthMm * 0.42), 8, 48);
+                        if (!colWidths.TryGetValue(c, out var cur) || w > cur) colWidths[c] = w;
+                        c++;
+                    }
+                }
+                if (colWidths.Count > 0)
+                {
+                    sw.Write("<cols>");
+                    foreach (var kv in colWidths.OrderBy(k => k.Key))
+                        sw.Write(string.Format(CultureInfo.InvariantCulture, "<col min=\"{0}\" max=\"{0}\" width=\"{1:0.##}\" customWidth=\"1\"/>", kv.Key, kv.Value));
+                    sw.Write("</cols>");
+                }
+            }
+
+            sw.Write("<sheetData>");
 
             int rowIdx = 1;
             foreach (var p in r.Pages)
@@ -226,9 +259,20 @@ public class ReportExportService
                     {
                         string colRef = ExcelColName(colIdx) + rowIdx;
                         bool hasBorder = cell.BorderWidthPx > 0 && !string.Equals(cell.BorderSides, "None", StringComparison.OrdinalIgnoreCase);
-                        int styleIdx = cell.Bold ? (hasBorder ? 3 : 1) : (hasBorder ? 2 : 0);
-                        string val = XmlEscape(cell.Text ?? "");
-                        sw.Write($"<c r=\"{colRef}\" s=\"{styleIdx}\" t=\"inlineStr\"><is><t xml:space=\"preserve\">{val}</t></is></c>");
+                        string rawCellText = cell.AllowHtmlTags ? ReportRenderEngine.StripInlineHtmlTags(cell.Text) : (cell.Text ?? "");
+                        if (TryParseExcelNumber(rawCellText, out var numVal, out var isInt))
+                        {
+                            int numStyle = isInt
+                                ? (cell.Bold ? 7 : 6)
+                                : (cell.Bold ? 5 : 4);
+                            sw.Write($"<c r=\"{colRef}\" s=\"{numStyle}\" t=\"n\"><v>{numVal.ToString(CultureInfo.InvariantCulture)}</v></c>");
+                        }
+                        else
+                        {
+                            int styleIdx = cell.Bold ? (hasBorder ? 3 : 1) : (hasBorder ? 2 : 0);
+                            string val = XmlEscape(rawCellText);
+                            sw.Write($"<c r=\"{colRef}\" s=\"{styleIdx}\" t=\"inlineStr\"><is><t xml:space=\"preserve\">{val}</t></is></c>");
+                        }
                         colIdx++;
                     }
                     sw.Write("</row>");
@@ -238,6 +282,33 @@ public class ReportExportService
             sw.Write("</sheetData></worksheet>");
         }
         return ms.ToArray();
+    }
+
+    private static readonly CultureInfo TrExportCulture = CultureInfo.GetCultureInfo("tr-TR");
+
+    private static bool TryParseExcelNumber(string? raw, out decimal value, out bool isInteger)
+    {
+        value = 0m;
+        isInteger = false;
+        if (string.IsNullOrWhiteSpace(raw)) return false;
+        var s = raw.Trim();
+        // Do not turn dates, phone numbers, ratios, or leading-zero IDs (e.g. TC Kimlik No, 0012) into Excel numbers
+        if (s.Contains('/') || s.Contains(':') || s.Length > 18) return false;
+        s = s.Replace("₺", "").Replace("TL", "", StringComparison.OrdinalIgnoreCase).Replace("€", "").Replace("$", "").Trim();
+        if (s.Length == 0) return false;
+        if (s.Length > 1 && s[0] == '0' && char.IsDigit(s[1])) return false;
+        // Avoid parsing dd.MM.yyyy as a number
+        int dotCount = 0;
+        foreach (char ch in s) if (ch == '.') dotCount++;
+        if (dotCount == 2 && !s.Contains(',')) return false;
+
+        if (decimal.TryParse(s, NumberStyles.Number, TrExportCulture, out value) ||
+            decimal.TryParse(s, NumberStyles.Number, CultureInfo.InvariantCulture, out value))
+        {
+            isInteger = (value == Math.Truncate(value)) && !s.Contains(',');
+            return true;
+        }
+        return false;
     }
 
     private static string ExcelColName(int col)
@@ -279,7 +350,122 @@ public class ReportExportService
     public byte[] ExportExcelXml(RenderedReport r) => ExportXlsx(r);
 
     // =========================================================================
-    // 4. Microsoft Word (.doc — Word-compatible HTML/Office XML, Türkçe UTF-8)
+    // 4. Gerçek Microsoft Word OOXML (.docx — Sıfır Bağımlılık, Uyarı/Hata Yok!)
+    // =========================================================================
+    public byte[] ExportDocx(RenderedReport r)
+    {
+        using var ms = new MemoryStream(16384);
+        using (var zip = new ZipArchive(ms, ZipArchiveMode.Create, leaveOpen: true))
+        {
+            static void WriteEntry(ZipArchive z, string path, string content)
+            {
+                var entry = z.CreateEntry(path, CompressionLevel.Optimal);
+                using var sw = new StreamWriter(entry.Open(), new UTF8Encoding(false));
+                sw.Write(content);
+            }
+
+            WriteEntry(zip, "[Content_Types].xml",
+                "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>" +
+                "<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">" +
+                "<Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>" +
+                "<Default Extension=\"xml\" ContentType=\"application/xml\"/>" +
+                "<Override PartName=\"/word/document.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml\"/>" +
+                "</Types>");
+
+            WriteEntry(zip, "_rels/.rels",
+                "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>" +
+                "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">" +
+                "<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"word/document.xml\"/>" +
+                "</Relationships>");
+
+            var docEntry = zip.CreateEntry("word/document.xml", CompressionLevel.Optimal);
+            using var sw = new StreamWriter(docEntry.Open(), new UTF8Encoding(false), 65536);
+            sw.Write("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>");
+            sw.Write("<w:document xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><w:body>");
+
+            int pgWTwips = (int)Math.Round(Math.Max(50, r.PageWidthMm) * 56.6929);
+            int pgHTwips = (int)Math.Round(Math.Max(50, r.PageHeightMm) * 56.6929);
+            bool landscape = r.PageWidthMm > r.PageHeightMm;
+
+            for (int pi = 0; pi < r.Pages.Count; pi++)
+            {
+                var p = r.Pages[pi];
+                var rows = p.Elements
+                    .Where(e => !string.IsNullOrWhiteSpace(e.Text))
+                    .GroupBy(e => Math.Round(e.YMm / 4.5))
+                    .OrderBy(g => g.Key)
+                    .ToList();
+
+                if (rows.Count > 0)
+                {
+                    sw.Write("<w:tbl><w:tblPr><w:tblW w:w=\"5000\" w:type=\"pct\"/><w:tblBorders>" +
+                             "<w:top w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"CBD5E1\"/>" +
+                             "<w:left w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"CBD5E1\"/>" +
+                             "<w:bottom w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"CBD5E1\"/>" +
+                             "<w:right w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"CBD5E1\"/>" +
+                             "<w:insideH w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"CBD5E1\"/>" +
+                             "<w:insideV w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"CBD5E1\"/>" +
+                             "</w:tblBorders></w:tblPr>");
+
+                    foreach (var row in rows)
+                    {
+                        sw.Write("<w:tr>");
+                        foreach (var cell in row.OrderBy(e => e.XMm))
+                        {
+                            var bgHex = NormalizeHex6(cell.BackgroundColor);
+                            var shd = bgHex != null ? $"<w:shd w:val=\"clear\" w:color=\"auto\" w:fill=\"{bgHex}\"/>" : "";
+                            var cellWTwips = (int)Math.Round(Math.Max(8, cell.WidthMm) * 56.6929);
+                            var jc = cell.HAlign?.ToLowerInvariant() switch
+                            {
+                                "center" => "center",
+                                "right" => "right",
+                                "justify" => "both",
+                                _ => "left"
+                            };
+                            var colorHex = NormalizeHex6(cell.Color) ?? "111827";
+                            int halfPt = Math.Clamp((int)Math.Round((cell.FontSizePt > 0 ? cell.FontSizePt : 10) * 2), 12, 144);
+                            var cleanText = cell.AllowHtmlTags ? ReportRenderEngine.StripInlineHtmlTags(cell.Text) : (cell.Text ?? "");
+                            var rPr = $"<w:rPr>{(cell.Bold ? "<w:b/>" : "")}{(cell.Italic ? "<w:i/>" : "")}{(cell.Underline ? "<w:u w:val=\"single\"/>" : "")}<w:color w:val=\"{colorHex}\"/><w:sz w:val=\"{halfPt}\"/></w:rPr>";
+                            sw.Write($"<w:tc><w:tcPr><w:tcW w:w=\"{cellWTwips}\" w:type=\"dxa\"/>{shd}</w:tcPr><w:p><w:pPr><w:jc w:val=\"{jc}\"/><w:spacing w:before=\"20\" w:after=\"20\"/></w:pPr><w:r>{rPr}<w:t xml:space=\"preserve\">{XmlEscape(cleanText)}</w:t></w:r></w:p></w:tc>");
+                        }
+                        sw.Write("</w:tr>");
+                    }
+                    sw.Write("</w:tbl>");
+                }
+
+                if (pi < r.Pages.Count - 1)
+                    sw.Write("<w:p><w:r><w:br w:type=\"page\"/></w:r></w:p>");
+            }
+
+            sw.Write($"<w:sectPr><w:pgSz w:w=\"{pgWTwips}\" w:h=\"{pgHTwips}\"{(landscape ? " w:orient=\"landscape\"" : "")}/><w:pgMar w:top=\"567\" w:right=\"567\" w:bottom=\"567\" w:left=\"567\"/></w:sectPr>");
+            sw.Write("</w:body></w:document>");
+        }
+        return ms.ToArray();
+    }
+
+    private static string? NormalizeHex6(string? color)
+    {
+        if (string.IsNullOrWhiteSpace(color) || color.Equals("transparent", StringComparison.OrdinalIgnoreCase))
+            return null;
+        var s = color.Trim().TrimStart('#');
+        if (s.Length == 3) s = $"{s[0]}{s[0]}{s[1]}{s[1]}{s[2]}{s[2]}";
+        if (s.Length == 6 && s.All(Uri.IsHexDigit)) return s.ToUpperInvariant();
+        return null;
+    }
+
+    private static string RenderSafeInlineHtml(string raw)
+    {
+        // Encode everything first (100% XSS-safe), then restore only whitelisted formatting tags
+        var enc = WebUtility.HtmlEncode(raw);
+        enc = System.Text.RegularExpressions.Regex.Replace(enc, @"&lt;(/?(?:b|strong|i|em|u))&gt;", "<$1>", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        enc = System.Text.RegularExpressions.Regex.Replace(enc, @"&lt;br\s*/?&gt;", "<br/>", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        enc = System.Text.RegularExpressions.Regex.Replace(enc, @"&lt;color\s*=\s*(?:&quot;|&#39;)?(#[0-9a-fA-F]{3,8})(?:&quot;|&#39;)?&gt;", "<span style=\"color:$1\">", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        enc = System.Text.RegularExpressions.Regex.Replace(enc, @"&lt;/color&gt;", "</span>", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        return enc;
+    }
+
+    // =========================================================================
+    // 4b. Legacy Word-compatible HTML (.doc)
     // =========================================================================
     public byte[] ExportWordHtml(RenderedReport r)
     {

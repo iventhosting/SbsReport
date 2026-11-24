@@ -149,7 +149,7 @@
     try {
       const res = await fetch(apiUrl(`/reports/${encodeURIComponent(name)}`));
       if (!res.ok) {
-        alert(t('loadFailed'));
+        sbsAlert(t('loadFailed'), 'Hata');
         return;
       }
       state.report = await res.json();
@@ -262,10 +262,10 @@
     const headerBands = state.report.bands.filter(b => b.type === 'PageHeader' || b.type === 'ReportTitle');
     const footerBands = state.report.bands.filter(b => b.type === 'PageFooter');
     if (headerBands.length === 0 && footerBands.length === 0) {
-      alert('Bu raporda Master olarak çıkarılacak PageHeader veya PageFooter bandı bulunamadı.');
+      await sbsAlert('Bu raporda Master olarak çıkarılacak PageHeader veya PageFooter bandı bulunamadı.', 'Master Form');
       return;
     }
-    const masterName = prompt('Yeni Master Form adı:', `${state.report.name}_Master`);
+    const masterName = await sbsPrompt('Yeni Master Form adı:', `${state.report.name}_Master`, 'Master Form Oluştur');
     if (!masterName || !masterName.trim()) return;
     const cleanName = masterName.trim().replace(/\.sbs$/i, '');
 
@@ -287,7 +287,7 @@
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(masterDoc)
     });
-    if (!res.ok) { alert('Master Form kaydedilemedi!'); return; }
+    if (!res.ok) { await sbsAlert('Master Form kaydedilemedi!', 'Hata'); return; }
 
     pushUndo();
     // Remove extracted PageHeader/PageFooter from child and attach Master!
@@ -429,10 +429,10 @@
     setStatus(`Yeni sayfa eklendi: Page ${nextNum}`);
   }
 
-  function deleteReportPage(idx) {
+  async function deleteReportPage(idx) {
     if (!state.report || !state.report.pages || state.report.pages.length <= 1) return;
     const pgName = state.report.pages[idx]?.name || `Page ${idx + 1}`;
-    if (!confirm(`"${pgName}" silinsin mi?`)) return;
+    if (!await sbsConfirm(`"${pgName}" sayfasını silmek istediğinizden emin misiniz?`, 'Sayfayı Sil')) return;
     pushUndo();
     syncActivePageToPagesArray();
     state.report.pages.splice(idx, 1);
@@ -502,6 +502,22 @@
       stage.style.transform = `scale(${state.zoom})`;
       stage.style.transformOrigin = 'top center';
     }
+
+    // Right-click on empty Page / Form area -> Page Context Menu
+    sheet.oncontextmenu = (e) => {
+      e.preventDefault();
+      state.selectedCompId = null;
+      state.selectedBandId = null;
+      state.multiIds = new Set();
+      state.inspectorTarget = '__form__';
+      renderProperties();
+      showPageContextMenu(e.clientX, e.clientY);
+    };
+    // Double-click on empty Page / Form area -> Page Setup Modal (Stimulsoft Parity)
+    sheet.ondblclick = (e) => {
+      if (e.target.closest('.comp-box') || e.target.closest('.band-box')) return;
+      openPageSetupModal();
+    };
 
     // Grid toggle: add/remove class + set background-size
     if (pg.showGrid) {
@@ -636,6 +652,18 @@
       const isBandSel = band.id === state.selectedBandId && !state.selectedCompId;
       bandBox.className = 'band-box' + (isBandSel ? ' selected' : '');
       bandBox.dataset.bandId = band.id;
+      bandBox.oncontextmenu = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        state.selectedBandId = band.id;
+        state.selectedCompId = null;
+        state.multiIds = new Set();
+        state.inspectorTarget = 'band:' + band.id;
+        renderTree();
+        renderInspectorTargetSelect();
+        renderProperties();
+        showBandContextMenu(e.clientX, e.clientY, band);
+      };
 
       // === Colored Caption with Drag-and-Drop + Move Up/Down/Delete ===
       const caption = document.createElement('div');
@@ -706,9 +734,9 @@
       const btnDel = document.createElement('button');
       btnDel.className = 'band-act-btn'; btnDel.title = 'Bandı Sil'; btnDel.textContent = '✕';
       btnDel.style.color = '#fca5a5';
-      btnDel.onclick = (e) => {
+      btnDel.onclick = async (e) => {
         e.stopPropagation();
-        if (!confirm(t('confirmDeleteBand', band.name))) return;
+        if (!await sbsConfirm(t('confirmDeleteBand', band.name), 'Bandı Sil')) return;
         pushUndo();
         state.report.bands = state.report.bands.filter(b => b.id !== band.id);
         syncActivePageToPagesArray(); // aksi halde renderAll -> ensureReportPages eski bant dizisini geri yükler
@@ -991,9 +1019,9 @@
           if (cellObj.bg && cellObj.bg !== 'transparent') cEl.style.backgroundColor = cellObj.bg;
           if (cellObj.hAlign) cEl.style.justifyContent = cellObj.hAlign === 'right' ? 'flex-end' : cellObj.hAlign === 'center' ? 'center' : 'flex-start';
           cEl.title = 'Hücreyi düzenlemek için çift tıklayın';
-          cEl.ondblclick = (ev) => {
+          cEl.ondblclick = async (ev) => {
             ev.stopPropagation();
-            const val = prompt(`Tablo Hücresi [Satır ${ri + 1}, Sütun ${ci + 1}] metin veya ifade:`, cellObj.text ?? '');
+            const val = await sbsPrompt(`Tablo Hücresi [Satır ${ri + 1}, Sütun ${ci + 1}] metin veya ifade:`, cellObj.text ?? '', 'Hücre Düzenle');
             if (val === null) return;
             pushUndo();
             tblData.rows[ri][ci].text = val;
@@ -1042,6 +1070,27 @@
       } else {
         el.style.borderBottom = `${Math.max(1, comp.borderWidthPx || 1)}px ${bStyle} ${comp.color || '#111827'}`;
       }
+    } else if (comp.type === 'TextInCells') {
+      const inner = document.createElement('div');
+      inner.className = 'comp-inner';
+      inner.style.cssText = 'display:flex;align-items:stretch;gap:' + Math.max(0, comp.cellGapMm ?? 0.8) + 'mm;width:100%;height:100%;overflow:hidden;';
+      const cellW = Math.max(2.5, comp.cellWidthMm || 5);
+      const gap = Math.max(0, comp.cellGapMm ?? 0.8);
+      const count = (comp.cellCount && comp.cellCount > 0)
+        ? Math.min(64, comp.cellCount)
+        : Math.max(1, Math.floor((comp.widthMm + gap) / (cellW + gap)));
+      const txt = comp.text || '';
+      const bCol = comp.borderColor || '#64748b';
+      const bW = Math.max(1, comp.borderWidthPx || 1);
+      for (let i = 0; i < count; i++) {
+        const box = document.createElement('div');
+        box.style.cssText = `flex:0 0 ${cellW}mm;border:${bW}px solid ${bCol};display:flex;align-items:center;justify-content:center;background:${comp.backgroundColor && comp.backgroundColor !== 'transparent' ? comp.backgroundColor : '#ffffff'};box-sizing:border-box;`;
+        box.textContent = i < txt.length ? txt[i] : '';
+        inner.appendChild(box);
+      }
+      el.style.border = 'none';
+      el.style.background = 'transparent';
+      el.appendChild(inner);
     } else if (comp.type === 'Barcode') {
       const inner = document.createElement('div');
       inner.className = 'comp-inner';
@@ -1057,7 +1106,8 @@
       inner.className = 'comp-inner';
       inner.style.justifyContent = 'center';
       if (comp.imageUrl) {
-        inner.innerHTML = `<img src="${escapeHtml(comp.imageUrl)}" style="max-width:100%;max-height:100%;object-fit:contain;" />`;
+        const fit = (comp.imageFit || 'Contain').toLowerCase();
+        inner.innerHTML = `<img src="${escapeHtml(comp.imageUrl)}" style="width:100%;height:100%;object-fit:${fit};" />`;
       } else {
         inner.innerHTML = `<span style="opacity:.6;">🖼 [Image]</span>`;
       }
@@ -1075,7 +1125,13 @@
       inner.className = 'comp-inner';
       inner.style.justifyContent = comp.hAlign === 'center' ? 'center' : comp.hAlign === 'right' ? 'flex-end' : comp.hAlign === 'justify' ? 'space-between' : 'flex-start';
       inner.style.alignItems = comp.vAlign === 'top' ? 'flex-start' : comp.vAlign === 'bottom' ? 'flex-end' : 'center';
-      inner.textContent = comp.type === 'Shape' ? '' : (comp.text ?? '');
+      if (comp.type === 'Shape') {
+        inner.textContent = '';
+      } else if (comp.allowHtmlTags) {
+        inner.innerHTML = renderSafeInlineHtml(comp.text ?? '');
+      } else {
+        inner.textContent = comp.text ?? '';
+      }
       el.appendChild(inner);
     }
 
@@ -1398,7 +1454,7 @@
           <label>${t('pPicture')}</label>
           <div style="display:flex;gap:4px;width:100%;">
             <input type="text" value="${escapeHtml(pg.picture || '')}" placeholder="URL / dosya" data-form-prop="picture" style="flex:1;" />
-            <button class="rbtn rbtn-xs" onclick="alert('Görsel URL giriniz')">📁</button>
+            <button class="rbtn rbtn-xs" title="Görsel URL giriniz">📁</button>
           </div>
         </div>
         ${propInput(t('pFormName'), 'text', pg.formName || 'Form', v => { pg.formName = v; $('#reportNameLabel').textContent = v + '.sbs'; })}
@@ -1612,10 +1668,10 @@
       <div class="prop-group">
         <div class="prop-group-title">${t('pAppearance')}</div>
         ${propInput(t('pFontSize'), 'number', comp.fontSizePt, v => { comp.fontSizePt = parseFloat(v) || 10; })}
-        ${propInput(t('pTextColor'), 'color', comp.color || '#111827', v => { comp.color = v; })}
-        ${propInput(t('pBackColor'), 'text', comp.backgroundColor || 'transparent', v => { comp.backgroundColor = v; })}
+        ${propColor(t('pTextColor'), comp.color || '#111827', v => { comp.color = v; }, false)}
+        ${propColor(t('pBackColor'), comp.backgroundColor || 'transparent', v => { comp.backgroundColor = v; }, true)}
         ${propInput(t('pBorderWidth'), 'number', comp.borderWidthPx || 0, v => { comp.borderWidthPx = parseFloat(v) || 0; })}
-        ${propInput(t('pBorderColor'), 'color', comp.borderColor || '#cbd5e1', v => { comp.borderColor = v; })}
+        ${propColor(t('pBorderColor'), comp.borderColor || '#cbd5e1', v => { comp.borderColor = v; }, false)}
         ${propSelect(t('pBorderStyle'), ['Solid', 'Dashed', 'Dotted', 'Double'], comp.borderStyle || 'Solid', v => { comp.borderStyle = v; })}
         ${propInput(t('pCornerRadius'), 'number', comp.cornerRadiusPx || 0, v => { comp.cornerRadiusPx = parseFloat(v) || 0; })}
       </div>
@@ -1629,6 +1685,20 @@
       </div>` : ''}
 
       <!-- Specifics -->
+      ${comp.type === 'TextInCells' ? `
+      <div class="prop-group">
+        <div class="prop-group-title">Kutucuklu Metin (TextInCells)</div>
+        ${propInput('Kutu Sayısı (0=Oto)', 'number', comp.cellCount || 0, v => { comp.cellCount = Math.max(0, parseInt(v, 10) || 0); })}
+        ${propInput('Kutu Genişliği (mm)', 'number', comp.cellWidthMm || 5, v => { comp.cellWidthMm = Math.max(2.5, parseFloat(v) || 5); })}
+        ${propInput('Kutu Boşluğu (mm)', 'number', comp.cellGapMm ?? 0.8, v => { comp.cellGapMm = Math.max(0, parseFloat(v) || 0); })}
+      </div>` : ''}
+
+      ${comp.type === 'Image' ? `
+      <div class="prop-group">
+        <div class="prop-group-title">Görsel (Image)</div>
+        ${propSelect('Sığdırma / Ger (Stretch)', ['Contain', 'Fill', 'Cover', 'None'], comp.imageFit || 'Contain', v => { comp.imageFit = v; })}
+      </div>` : ''}
+
       ${comp.type === 'Barcode' ? `
       <div class="prop-group">
         <div class="prop-group-title">Barkod</div>
@@ -1642,6 +1712,22 @@
         ${propInput(t('pCategoryField'), 'text', comp.categoryField || '', v => { comp.categoryField = v; })}
         ${propInput(t('pValueField'), 'text', comp.valueField || '', v => { comp.valueField = v; })}
       </div>` : ''}
+
+      <!-- Behavior (Stimulsoft Parity) -->
+      <div class="prop-group">
+        <div class="prop-group-title">Davranış (Behavior)</div>
+        ${propCheck('Otomatik Büyü (CanGrow)', !!comp.canGrow, v => { comp.canGrow = v; })}
+        ${propCheck('Bant Yüksekliğine Uzat (GrowToHeight)', !!comp.growToHeight, v => { comp.growToHeight = v; })}
+        ${propCheck('Kutuya Sığdır (ShrinkFontToFit)', !!comp.shrinkFontToFit, v => { comp.shrinkFontToFit = v; })}
+        ${propCheck('HTML Etiketleri (AllowHtmlTags)', !!comp.allowHtmlTags, v => { comp.allowHtmlTags = v; })}
+        ${propCheck('Sıfırları Gizle (HideZeros)', !!comp.hideZeros, v => { comp.hideZeros = v; })}
+        ${propInput('Maks. Satır (0=Sınırsız)', 'number', comp.maxNumberOfLines || 0, v => { comp.maxNumberOfLines = Math.max(0, parseInt(v, 10) || 0); })}
+        ${propSelect('Tekrarlayan Değerler (Duplicates)', ['None', 'Hide', 'Merge'], comp.processingDuplicates || 'None', v => { comp.processingDuplicates = v; })}
+        ${propSelect('Yazdırma Sayfası (PrintOn)', ['AllPages', 'ExceptFirstPage', 'ExceptLastPage', 'OnlyFirstPage', 'OnlyLastPage'], comp.printOn || 'AllPages', v => { comp.printOn = v; })}
+        ${propCheck('Aktif (Enabled)', comp.enabled !== false, v => { comp.enabled = v; })}
+        ${propCheck('Yazdırılabilir (Printable)', comp.printable !== false, v => { comp.printable = v; })}
+        ${propCheck('Kilitli (Locked)', !!comp.locked, v => { comp.locked = v; })}
+      </div>
 
       <!-- Conditional Formatting -->
       <div class="prop-group">
@@ -1690,13 +1776,15 @@
         <div class="prop-group-title">${t('pBand')} (${band.type})</div>
         ${propInput(t('pName'), 'text', band.name, v => { band.name = v; })}
         ${propInput(t('pBandHeight'), 'number', band.heightMm, v => { band.heightMm = Math.max(4, parseFloat(v) || 10); })}
-        ${propInput(t('pBackColor'), 'text', band.backgroundColor || 'transparent', v => { band.backgroundColor = v; })}
+        ${propColor(t('pBackColor'), band.backgroundColor || 'transparent', v => { band.backgroundColor = v; }, true)}
         ${band.type === 'Data' || band.type === 'Table' || band.type === 'HierarchicalData' ? propSelect(t('pDataSource'), dsOptions, band.dataSource || '', v => { band.dataSource = v || null; }) : ''}
         ${band.type === 'Data' || band.type === 'Table' || band.type === 'HierarchicalData' ? propInput(t('pSortBy'), 'text', band.sortBy || '', v => { band.sortBy = v || null; }) : ''}
         ${band.type === 'Data' || band.type === 'Table' || band.type === 'HierarchicalData' ? propSelect(t('pSortDir'), ['asc', 'desc'], band.sortDirection || 'asc', v => { band.sortDirection = v; }) : ''}
         ${band.type === 'Data' || band.type === 'Table' || band.type === 'HierarchicalData' ? propInput(t('pFilter'), 'text', band.filterExpression || '', v => { band.filterExpression = v || null; }, t('pFilterPh')) : ''}
         ${band.type === 'Data' || band.type === 'Table' ? propInput('Veri Sayısı (CountData)', 'number', band.countData || 0, v => { band.countData = parseInt(v, 10) || 0; }) : ''}
-        ${band.type === 'Data' || band.type === 'Table' ? propInput(t('pZebra'), 'text', band.evenBackgroundColor || '', v => { band.evenBackgroundColor = v || null; }, '#f8fafc') : ''}
+        ${band.type === 'Data' ? propInput('Sütun Sayısı (Columns)', 'number', band.columns || 1, v => { band.columns = Math.max(1, Math.min(12, parseInt(v, 10) || 1)); }) : ''}
+        ${band.type === 'Data' && (band.columns || 1) > 1 ? propInput('Sütun Boşluğu (mm)', 'number', band.columnGapsMm ?? 4, v => { band.columnGapsMm = Math.max(0, parseFloat(v) || 0); }) : ''}
+        ${band.type === 'Data' || band.type === 'Table' ? propColor(t('pZebra'), band.evenBackgroundColor || 'transparent', v => { band.evenBackgroundColor = v === 'transparent' ? null : v; }, true) : ''}
         ${band.type === 'GroupHeader' ? propInput(t('pGroupBy'), 'text', band.groupBy || '', v => { band.groupBy = v || null; }, 'CategoryName') : ''}
         ${band.type === 'HierarchicalData' ? propInput('Anahtar Sütun (KeyColumn)', 'text', band.keyDataColumn || '', v => { band.keyDataColumn = v || null; }, 'Id') : ''}
         ${band.type === 'HierarchicalData' ? propInput('Üst Sütun (MasterKey)', 'text', band.masterKeyDataColumn || '', v => { band.masterKeyDataColumn = v || null; }, 'ParentId') : ''}
@@ -1704,8 +1792,13 @@
       </div>
       <div class="prop-group">
         <div class="prop-group-title">Davranış (Behavior)</div>
+        ${propCheck('Aktif (Enabled)', band.enabled !== false, v => { band.enabled = v; })}
         ${propCheck('Otomatik Büyü (CanGrow)', !!band.canGrow, v => { band.canGrow = v; })}
         ${propCheck('Her Sayfada Yazdır (PrintOnAllPages)', band.printOnAllPages !== false, v => { band.printOnAllPages = v; })}
+        ${propSelect('Yazdırma Sayfası (PrintOn)', ['AllPages', 'ExceptFirstPage', 'ExceptLastPage', 'OnlyFirstPage', 'OnlyLastPage'], band.printOn || 'AllPages', v => { band.printOn = v; })}
+        ${band.type === 'Footer' || band.type === 'ReportSummary' ? propCheck('Sayfa Dibine Yasla (PrintAtBottom)', !!band.printAtBottom, v => { band.printAtBottom = v; }) : ''}
+        ${band.type === 'GroupHeader' ? propCheck('Sayfa No Sıfırla (ResetPageNumber)', !!band.resetPageNumber, v => { band.resetPageNumber = v; }) : ''}
+        ${band.type === 'GroupHeader' ? propCheck('Grubu Birlikte Tut (KeepGroupTogether)', !!band.keepGroupTogether, v => { band.keepGroupTogether = v; }) : ''}
         ${propCheck('Önce Yeni Sayfa (NewPageBefore)', !!band.newPageBefore, v => { band.newPageBefore = v; })}
         ${propCheck('Sonra Yeni Sayfa (NewPageAfter)', !!band.newPageAfter, v => { band.newPageAfter = v; })}
       </div>
@@ -1763,12 +1856,134 @@
       const cb = propCallbacks[idx];
       input.onchange = () => {
         pushUndo();
-        cb(input.value);
+        cb(input.type === 'checkbox' ? input.checked : input.value);
         renderAll();
+      };
+    });
+    panel.querySelectorAll('.color-prop-btn[data-prop-idx]').forEach(btn => {
+      btn.onclick = (e) => {
+        e.stopPropagation();
+        const idx = parseInt(btn.dataset.propIdx, 10);
+        const cb = propCallbacks[idx];
+        if (!cb) return;
+        openColorPopover(btn, btn.dataset.colorVal || 'transparent', btn.dataset.allowTrans === '1', (newColor) => {
+          pushUndo();
+          cb(newColor);
+          renderAll();
+        });
       };
     });
   }
 
+  const STI_PALETTE = [
+    { name: 'Şeffaf', hex: 'transparent' },
+    { name: 'Beyaz', hex: '#ffffff' },
+    { name: 'Siyah', hex: '#000000' },
+    { name: 'Koyu Gri', hex: '#111827' },
+    { name: 'Gri', hex: '#64748b' },
+    { name: 'Açık Gri', hex: '#e2e8f0' },
+    { name: 'Kırmızı', hex: '#dc2626' },
+    { name: 'Koyu Kırmızı', hex: '#991b1b' },
+    { name: 'Turuncu', hex: '#ea580c' },
+    { name: 'Sarı', hex: '#eab308' },
+    { name: 'Yeşil', hex: '#16a34a' },
+    { name: 'Zümrüt', hex: '#059669' },
+    { name: 'Mavi', hex: '#2563eb' },
+    { name: 'Lacivert', hex: '#1e3a8a' },
+    { name: 'Turkuaz', hex: '#0891b2' },
+    { name: 'Mor', hex: '#7c3aed' },
+    { name: 'Pembe', hex: '#db2777' },
+    { name: 'Kahverengi', hex: '#78350f' },
+    { name: 'Buz Mavi', hex: '#eff6ff' },
+    { name: 'Açık Yeşil', hex: '#f0fdf4' },
+    { name: 'Açık Sarı', hex: '#fefce8' },
+    { name: 'Açık Kırmızı', hex: '#fef2f2' },
+    { name: 'Açık Mor', hex: '#faf5ff' },
+    { name: 'Zebra Gri', hex: '#f8fafc' }
+  ];
+
+  function colorDisplayName(val) {
+    if (!val || val.toLowerCase() === 'transparent') return 'Şeffaf';
+    const hit = STI_PALETTE.find(c => c.hex.toLowerCase() === val.toLowerCase());
+    return hit ? hit.name : val;
+  }
+
+  let _activeColorPop = null;
+  function closeColorPopover() {
+    if (_activeColorPop) { _activeColorPop.remove(); _activeColorPop = null; }
+  }
+  document.addEventListener('click', (e) => {
+    if (_activeColorPop && !_activeColorPop.contains(e.target) && !e.target.closest('.color-prop-btn')) {
+      closeColorPopover();
+    }
+  });
+
+  function openColorPopover(anchorEl, currentVal, allowTransparent, onPick) {
+    closeColorPopover();
+    const pop = document.createElement('div');
+    pop.className = 'color-popover';
+    const list = allowTransparent ? STI_PALETTE : STI_PALETTE.filter(c => c.hex !== 'transparent');
+    const safeHex = (currentVal && currentVal.startsWith('#') && currentVal.length >= 4) ? currentVal : '#111827';
+
+    pop.innerHTML = `
+      <div class="color-pop-tabs">
+        <button type="button" class="color-pop-tab active" data-ctab="grid">Palet</button>
+        <button type="button" class="color-pop-tab" data-ctab="named">İsimli Renkler</button>
+        <button type="button" class="color-pop-tab" data-ctab="custom">Özel</button>
+      </div>
+      <div class="color-pop-grid" data-cpane="grid">
+        ${list.map(c => `<div class="color-chip ${c.hex === 'transparent' ? 'is-transparent' : ''}" data-hex="${c.hex}" title="${c.name} (${c.hex})" style="${c.hex !== 'transparent' ? 'background:' + c.hex : ''}"></div>`).join('')}
+      </div>
+      <div class="color-named-list" data-cpane="named" hidden>
+        ${list.map(c => `<div class="color-named-item" data-hex="${c.hex}"><span class="color-swatch ${c.hex === 'transparent' ? 'is-transparent' : ''}" style="${c.hex !== 'transparent' ? 'background:' + c.hex : ''}"></span><span>${c.name}</span></div>`).join('')}
+      </div>
+      <div data-cpane="custom" hidden style="display:flex;flex-direction:column;gap:8px;">
+        <div style="display:flex;gap:6px;align-items:center;">
+          <input type="color" class="cp-native" value="${safeHex}" style="width:44px;height:28px;padding:1px;border:1px solid var(--border);background:var(--input-bg);border-radius:4px;" />
+          <input type="text" class="cp-hex rinput" value="${escapeHtml(currentVal || '')}" placeholder="#2563eb veya transparent" style="flex:1;height:28px;" />
+        </div>
+        <button type="button" class="btn btn-primary rbtn-xs cp-apply" style="align-self:flex-end;">Uygula</button>
+      </div>
+    `;
+
+    pop.querySelectorAll('[data-ctab]').forEach(tb => {
+      tb.onclick = () => {
+        const target = tb.dataset.ctab;
+        pop.querySelectorAll('[data-ctab]').forEach(x => x.classList.toggle('active', x.dataset.ctab === target));
+        pop.querySelectorAll('[data-cpane]').forEach(p => { p.hidden = p.dataset.cpane !== target; });
+      };
+    });
+    pop.querySelectorAll('[data-hex]').forEach(ch => {
+      ch.onclick = () => { onPick(ch.dataset.hex); closeColorPopover(); };
+    });
+    const nat = pop.querySelector('.cp-native');
+    const hexInp = pop.querySelector('.cp-hex');
+    if (nat && hexInp) {
+      nat.oninput = () => { hexInp.value = nat.value; };
+      pop.querySelector('.cp-apply').onclick = () => { onPick(hexInp.value.trim() || 'transparent'); closeColorPopover(); };
+    }
+
+    document.body.appendChild(pop);
+    _activeColorPop = pop;
+    const rect = anchorEl.getBoundingClientRect();
+    const left = Math.min(rect.left, Math.max(8, window.innerWidth - 268));
+    const top = (rect.bottom + 240 > window.innerHeight) ? Math.max(8, rect.top - 220) : (rect.bottom + 4);
+    pop.style.left = `${left}px`;
+    pop.style.top = `${top}px`;
+  }
+
+  function propColor(label, val, onChange, allowTransparent = true) {
+    const idx = propCallbacks.length;
+    propCallbacks.push(onChange);
+    const isTrans = !val || val.toLowerCase() === 'transparent';
+    return `<div class="prop-row"><label>${label}</label><button type="button" class="color-prop-btn" data-prop-idx="${idx}" data-color-val="${escapeHtml(val || 'transparent')}" data-allow-trans="${allowTransparent ? '1' : '0'}"><span class="color-swatch ${isTrans ? 'is-transparent' : ''}" style="${isTrans ? '' : 'background:' + escapeHtml(val)}"></span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(colorDisplayName(val))}</span></button></div>`;
+  }
+
+  function propCheck(label, checked, onChange) {
+    const idx = propCallbacks.length;
+    propCallbacks.push(onChange);
+    return `<div class="prop-row prop-row-check"><label><input type="checkbox" ${checked ? 'checked' : ''} data-prop-idx="${idx}" /><span>${label}</span></label></div>`;
+  }
   function propInput(label, type, val, onChange, placeholder = '') {
     const idx = propCallbacks.length;
     propCallbacks.push(onChange);
@@ -1788,6 +2003,14 @@
   function escapeHtml(s) {
     return String(s ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
+  function renderSafeInlineHtml(raw) {
+    let enc = escapeHtml(raw);
+    enc = enc.replace(/&lt;(\/?(?:b|strong|i|em|u))&gt;/gi, '<$1>');
+    enc = enc.replace(/&lt;br\s*\/?&gt;/gi, '<br/>');
+    enc = enc.replace(/&lt;color\s*=\s*(?:&quot;|&#39;)?(#[0-9a-fA-F]{3,8})(?:&quot;|&#39;)?&gt;/gi, '<span style="color:$1">');
+    enc = enc.replace(/&lt;\/color&gt;/gi, '</span>');
+    return enc;
+  }
 
   document.addEventListener('sbs:openexpr', () => {
     const { comp } = findSelected();
@@ -1796,6 +2019,7 @@
 
   // ---------- Tree & Dictionary Panels ----------
   function renderTree() {
+    updateCheckerBadge();
     const trees = [$('#reportTree'), $('#inspectorTreeContent')];
     trees.forEach(tree => {
       if (!tree || !state.report) return;
@@ -1841,13 +2065,15 @@
     dicts.forEach(tree => {
       if (!tree || !state.report) return;
       tree.innerHTML = '';
+      const customNames = new Set((state.report.dataSources || []).map(ds => ds.name.toLowerCase()));
       const allSources = [
-        ...state.demoSources,
         ...(state.report.dataSources || []).map(ds => ({
           name: ds.name,
           alias: ds.alias || ds.name,
-          columns: (ds.columns || []).map(c => ({ name: c.name, type: c.dataType || 'string' }))
-        }))
+          isCustom: true,
+          columns: (ds.columns || []).map(c => ({ name: c.name, alias: c.alias, type: c.dataType || 'string', isCalculated: !!c.isCalculated, expression: c.expression }))
+        })),
+        ...state.demoSources.filter(d => !customNames.has(d.name.toLowerCase())).map(d => ({ ...d, isCustom: false }))
       ];
 
       allSources.forEach(ds => {
@@ -1857,11 +2083,16 @@
         head.className = 'dict-ds-head';
         head.draggable = true;
         head.style.cursor = 'grab';
-        head.title = 'Sayfaya sürükleyin veya ⚡ tıklayarak otomatik tablo/bant oluşturun';
+        head.title = 'Sağ tık: Yeni Sütun / Hesaplanan Sütun / Sil · Sürükle: Tablo oluştur';
         head.ondragstart = (e) => {
           e.dataTransfer.setData('application/sbs-ds-wizard', ds.name);
         };
-        head.innerHTML = `<span>🗄 <b>${escapeHtml(ds.alias || ds.name)}</b></span>`;
+        head.oncontextmenu = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          showDictContextMenu(e.clientX, e.clientY, { dsName: ds.name, colName: null, isCustom: !!ds.isCustom });
+        };
+        head.innerHTML = `<span class="dict-ds-toggle" style="cursor:pointer;">▾ 🗄 <b>${escapeHtml(ds.alias || ds.name)}</b></span>`;
 
         const acts = document.createElement('div');
         acts.className = 'dict-ds-acts';
@@ -1873,27 +2104,15 @@
         btnWiz.onclick = (e) => { e.stopPropagation(); openDataPlacementWizard(ds.name); };
         acts.appendChild(btnWiz);
 
-        const isCustom = (state.report.dataSources || []).some(x => x.name.toLowerCase() === ds.name.toLowerCase());
-        if (isCustom) {
-          const btnAddCol = document.createElement('button');
-          btnAddCol.className = 'rbtn rbtn-xs';
-          btnAddCol.textContent = '+';
-          btnAddCol.title = 'Bu veri kaynağına yeni kolon ekle';
-          btnAddCol.onclick = (e) => {
-            e.stopPropagation();
-            const colName = prompt(`"${ds.name}" için yeni kolon adı (örn: TCKIMLIKNO, AD, UNVAN):`);
-            if (!colName || !colName.trim()) return;
-            pushUndo();
-            const targetDs = state.report.dataSources.find(x => x.name.toLowerCase() === ds.name.toLowerCase());
-            if (targetDs) {
-              if (!targetDs.columns) targetDs.columns = [];
-              targetDs.columns.push({ name: colName.trim(), dataType: 'string' });
-              renderDictionary();
-              setStatus(`Kolon eklendi: ${ds.name}.${colName.trim()}`);
-            }
-          };
-          acts.appendChild(btnAddCol);
-        }
+        const btnAddCol = document.createElement('button');
+        btnAddCol.className = 'rbtn rbtn-xs';
+        btnAddCol.textContent = '+';
+        btnAddCol.title = 'Yeni Sütun Ekle (Sağ tık ile Hesaplanan Sütun da ekleyebilirsiniz)';
+        btnAddCol.onclick = (e) => {
+          e.stopPropagation();
+          openColumnEditorModal(ds.name, { isCalculated: false });
+        };
+        acts.appendChild(btnAddCol);
 
         const btnView = document.createElement('button');
         btnView.className = 'rbtn rbtn-xs';
@@ -1908,7 +2127,7 @@
         btnBind.onclick = (e) => {
           e.stopPropagation();
           const b = findBand(state.selectedBandId) || state.report.bands.find(x => x.type === 'Data' || x.type === 'Table');
-          if (!b) { alert('Önce bir Data veya Tablo bandı ekleyin/seçin.'); return; }
+          if (!b) { sbsAlert('Önce bir Data veya Tablo bandı ekleyin/seçin.', 'Bant Bulunamadı'); return; }
           pushUndo();
           b.dataSource = ds.name;
           renderAll();
@@ -1917,17 +2136,60 @@
 
         acts.appendChild(btnView);
         acts.appendChild(btnBind);
+
+        if (ds.isCustom) {
+          const btnDelDs = document.createElement('button');
+          btnDelDs.className = 'rbtn rbtn-xs';
+          btnDelDs.textContent = '🗑';
+          btnDelDs.style.color = '#f87171';
+          btnDelDs.title = 'Veri Kaynağını Sil';
+          btnDelDs.onclick = async (e) => {
+            e.stopPropagation();
+            if (!await sbsConfirm(`"${ds.name}" veri kaynağını rapordan silmek istiyor musunuz?`, 'Veri Kaynağını Sil')) return;
+            pushUndo();
+            state.report.dataSources = state.report.dataSources.filter(x => x.name.toLowerCase() !== ds.name.toLowerCase());
+            renderDictionary();
+            setStatus(`Veri kaynağı silindi: ${ds.name}`);
+          };
+          acts.appendChild(btnDelDs);
+        }
+
         head.appendChild(acts);
         dsNode.appendChild(head);
 
         const colList = document.createElement('div');
         colList.className = 'dict-cols';
+        head.querySelector('.dict-ds-toggle').onclick = () => { colList.hidden = !colList.hidden; };
 
         ds.columns.forEach(col => {
           const colEl = document.createElement('div');
           colEl.className = 'dict-col';
           colEl.draggable = true;
-          colEl.innerHTML = `<span class="col-type">${(col.type || 'S')[0].toUpperCase()}</span><span>${escapeHtml(col.name)}</span>`;
+          colEl.style.display = 'flex';
+          colEl.style.alignItems = 'center';
+          colEl.style.justifyContent = 'space-between';
+          const badge = col.isCalculated
+            ? `<span class="col-type" style="background:#7c3aed;color:#fff;" title="Hesaplanan Sütun: ${escapeHtml(col.expression || '')}">fx</span>`
+            : `<span class="col-type">${(col.type || 'S')[0].toUpperCase()}</span>`;
+          colEl.innerHTML = `<span style="display:inline-flex;align-items:center;gap:5px;overflow:hidden;text-overflow:ellipsis;">${badge}<span>${escapeHtml(col.alias || col.name)}</span></span>`
+            + (ds.isCustom ? `<button type="button" class="rbtn rbtn-xs dict-col-del" title="Sütunu Sil" style="padding:0 4px;opacity:.65;color:#f87171;">✕</button>` : '');
+          colEl.oncontextmenu = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            showDictContextMenu(e.clientX, e.clientY, { dsName: ds.name, colName: col.name, isCustom: !!ds.isCustom });
+          };
+          const delBtn = colEl.querySelector('.dict-col-del');
+          if (delBtn) {
+            delBtn.onclick = async (e) => {
+              e.stopPropagation();
+              if (!await sbsConfirm(`"${ds.name}.${col.name}" sütununu silmek istiyor musunuz?`, 'Sütunu Sil')) return;
+              pushUndo();
+              const targetDs = state.report.dataSources.find(x => x.name.toLowerCase() === ds.name.toLowerCase());
+              if (targetDs) targetDs.columns = (targetDs.columns || []).filter(c => c.name !== col.name);
+              renderDictionary();
+              setStatus(`Sütun silindi: ${ds.name}.${col.name}`);
+            };
+          }
           colEl.ondragstart = (e) => {
             e.dataTransfer.setData('application/sbs-expr', `{${ds.name}.${col.name}}`);
             e.dataTransfer.setData('application/sbs-ds', ds.name);
@@ -2001,6 +2263,7 @@
       CrossTab: { widthMm: 100, heightMm: 30, text: '' },
       RichText: { widthMm: 60, heightMm: 15, text: initialText || 'Zengin Metin' },
       SystemText: { widthMm: 40, heightMm: 8, text: initialText || '{PageNumber} / {TotalPageCount}' },
+      TextInCells: { widthMm: 70, heightMm: 7, text: initialText || '12345678901', cellCount: 11, cellWidthMm: 5.5, cellGapMm: 0.8, borderWidthPx: 1 },
       Panel: { widthMm: 60, heightMm: 35, text: '', borderWidthPx: 1, borderStyle: 'Solid' }
     };
 
@@ -2017,6 +2280,9 @@
       widthMm: d.widthMm,
       heightMm: d.heightMm,
       text: d.text,
+      cellCount: d.cellCount || 0,
+      cellWidthMm: d.cellWidthMm || 5,
+      cellGapMm: d.cellGapMm ?? 0.8,
       fontFamily: 'Segoe UI, Inter, sans-serif',
       fontSizePt: 10,
       color: '#111827',
@@ -2252,17 +2518,37 @@
     $('#tbCanGrow')?.addEventListener('click', () => toggleCompProp('canGrow'));
     $('#btnOpenTextFormat')?.addEventListener('click', () => {
       const { comp } = findSelected();
-      if (!comp) { alert('Önce bir metin bileşeni seçin.'); return; }
+      if (!comp) { sbsAlert('Önce bir metin bileşeni seçin.'); return; }
       openTextFormatModal(comp);
     });
     $('#btnOpenConditions')?.addEventListener('click', () => {
       const { comp } = findSelected();
-      if (!comp) { alert('Önce bir bileşen seçin.'); return; }
+      if (!comp) { sbsAlert('Önce bir bileşen seçin.'); return; }
       openConditionsModal(comp);
     });
-    $('#tbColor')?.addEventListener('change', (e) => applyCompStyle('color', e.target.value));
-    $('#tbBgColor')?.addEventListener('change', (e) => applyCompStyle('backgroundColor', e.target.value));
+    $('#tbColorBtn')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const { comp } = findSelected();
+      openColorPopover(e.currentTarget, comp?.color || '#111827', false, (c) => {
+        applyCompStyle('color', c);
+        const sw = $('#tbColorSwatch');
+        if (sw) sw.style.background = c;
+      });
+    });
+    $('#tbBgColorBtn')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const { comp } = findSelected();
+      openColorPopover(e.currentTarget, comp?.backgroundColor || 'transparent', true, (c) => {
+        applyCompStyle('backgroundColor', c);
+        const sw = $('#tbBgColorSwatch');
+        if (sw) {
+          sw.classList.toggle('is-transparent', c === 'transparent');
+          sw.style.background = c === 'transparent' ? '' : c;
+        }
+      });
+    });
     $('#tbBorders')?.addEventListener('change', (e) => applyCompStyle('borderSides', e.target.value));
+    $('#btnOpenBorderSetup')?.addEventListener('click', openBorderSetupModal);
 
     $('#tbAlignLeft')?.addEventListener('click', () => applyCompStyle('hAlign', 'left'));
     $('#tbAlignCenter')?.addEventListener('click', () => applyCompStyle('hAlign', 'center'));
@@ -2409,10 +2695,10 @@
     });
 
     // Report Variables / Parameters (+ Değişken)
-    $('#btnAddVariableRight')?.addEventListener('click', () => {
-      const varName = prompt('Yeni Rapor Değişkeni / Parametre Adı (örn: KurumAd, BaslangicTarihi):');
+    $('#btnAddVariableRight')?.addEventListener('click', async () => {
+      const varName = await sbsPrompt('Yeni Rapor Değişkeni / Parametre Adı (örn: KurumAd, BaslangicTarihi):', '', 'Yeni Değişken');
       if (!varName || !varName.trim()) return;
-      const defVal = prompt(`"${varName.trim()}" varsayılan tasarım değeri (opsiyonel):`, '') ?? '';
+      const defVal = (await sbsPrompt(`"${varName.trim()}" varsayılan tasarım değeri (opsiyonel):`, '', 'Varsayılan Değer')) ?? '';
       pushUndo();
       if (!state.report.variables) state.report.variables = {};
       state.report.variables[varName.trim()] = defVal;
@@ -2462,7 +2748,7 @@
 
     $('#btnFetchDsUrl')?.addEventListener('click', async () => {
       const url = ($('#dsApiUrlInput')?.value || '').trim();
-      if (!url) { alert('Geçerli bir API URL girin.'); return; }
+      if (!url) { sbsAlert('Geçerli bir API URL girin.'); return; }
       try {
         const res = await fetch(url);
         const data = await res.json();
@@ -2470,14 +2756,14 @@
         $('#dsJsonInput').value = JSON.stringify(arr.slice(0, 100), null, 2);
         if (!$('#dsNameInput').value.trim()) $('#dsNameInput').value = 'ApiVerisi';
       } catch (err) {
-        alert('URL okunamadı (CORS veya ağ hatası): ' + err.message);
+        sbsAlert('URL okunamadı (CORS veya ağ hatası): ' + err.message, 'Bağlantı Hatası');
       }
     });
 
     $('#btnSaveDs')?.addEventListener('click', () => {
       const dsName = ($('#dsNameInput')?.value || '').trim();
       const dsAlias = ($('#dsAliasInput')?.value || '').trim() || dsName;
-      if (!dsName) { alert(t('enterDsName')); return; }
+      if (!dsName) { sbsAlert(t('enterDsName')); return; }
 
       pushUndo();
       if (!state.report.dataSources) state.report.dataSources = [];
@@ -2490,7 +2776,7 @@
             dataType: r.querySelector('.sc-type')?.value || 'string'
           }))
           .filter(c => c.name.length > 0);
-        if (cols.length === 0) { alert('En az 1 kolon ekleyin.'); return; }
+        if (cols.length === 0) { sbsAlert('En az 1 kolon ekleyin.'); return; }
         const dsObj = { name: dsName, alias: dsAlias, type: 'schema', columns: cols, inlineData: null };
         if (existingIdx >= 0) state.report.dataSources[existingIdx] = dsObj;
         else state.report.dataSources.push(dsObj);
@@ -2506,7 +2792,7 @@
         rows = JSON.parse($('#dsJsonInput').value);
         if (!Array.isArray(rows) || rows.length === 0) throw new Error('En az 1 nesne içeren JSON dizisi olmalı.');
       } catch (err) {
-        alert(t('invalidJson') + err.message);
+        sbsAlert(t('invalidJson') + err.message, 'JSON Hatası');
         return;
       }
       const cols = Object.keys(rows[0]).map(k => ({
@@ -2571,14 +2857,30 @@
     // Keyboard Shortcuts
     window.addEventListener('keydown', handleGlobalKeydown);
 
-    // Context Menu Actions
+    // Context Menu Actions (Stimulsoft Parity)
     $$('[data-ctx]').forEach(item => {
       item.onclick = () => {
         hideContextMenu();
         const action = item.dataset.ctx;
+        const { comp } = findSelected();
         if (action === 'edit') {
-          const { comp } = findSelected();
           if (comp) openExpressionEditor(comp);
+        } else if (action === 'format') {
+          if (comp) openTextFormatModal(comp);
+        } else if (action === 'conditions') {
+          if (comp && typeof openConditionsModal === 'function') openConditionsModal(comp);
+        } else if (action === 'toggleHtml' && comp) {
+          pushUndo(); comp.allowHtmlTags = !comp.allowHtmlTags; renderAll();
+        } else if (action === 'toggleCanGrow' && comp) {
+          pushUndo(); comp.canGrow = !comp.canGrow; renderAll();
+        } else if (action === 'toggleGrowToHeight' && comp) {
+          pushUndo(); comp.growToHeight = !comp.growToHeight; renderAll();
+        } else if (action === 'toggleShrink' && comp) {
+          pushUndo(); comp.shrinkFontToFit = !comp.shrinkFontToFit; renderAll();
+        } else if (action === 'toggleLock' && comp) {
+          pushUndo(); comp.locked = !comp.locked; renderAll();
+        } else if (action === 'cut') {
+          copySelected(); deleteSelected();
         } else if (action === 'copy') copySelected();
         else if (action === 'paste') pasteClipboard();
         else if (action === 'duplicate') duplicateSelected();
@@ -2588,7 +2890,101 @@
       };
     });
     document.addEventListener('click', (e) => {
-      if (!e.target.closest('#ctxMenu')) hideContextMenu();
+      if (!e.target.closest('#ctxMenu') && !e.target.closest('#ctxBandMenu') && !e.target.closest('#ctxPageMenu') && !e.target.closest('#ctxDictMenu')) hideContextMenu();
+    });
+
+    // Dictionary Context Menu Actions (Stimulsoft DataSource / Column Right-Click Parity)
+    $$('[data-dctx]').forEach(item => {
+      item.onclick = async () => {
+        hideContextMenu();
+        const act = item.dataset.dctx;
+        const tInfo = _dictCtxTarget;
+        if (!tInfo) return;
+        const customDs = (state.report?.dataSources || []).find(x => x.name.toLowerCase() === tInfo.dsName.toLowerCase());
+        if (act === 'newDs') {
+          $('#btnAddDataSourceRight')?.click();
+        } else if (act === 'newCol') {
+          openColumnEditorModal(tInfo.dsName, { isCalculated: false });
+        } else if (act === 'newCalcCol') {
+          openColumnEditorModal(tInfo.dsName, { isCalculated: true });
+        } else if (act === 'newVar') {
+          $('#btnAddVariableRight')?.click();
+        } else if (act === 'viewData') {
+          openDataPreviewModal(tInfo.dsName);
+        } else if (act === 'edit') {
+          if (tInfo.colName && customDs) {
+            const colObj = (customDs.columns || []).find(c => c.name === tInfo.colName);
+            if (colObj) openColumnEditorModal(customDs.name, { isCalculated: !!colObj.isCalculated, existingCol: colObj });
+          } else if (customDs) {
+            const newAlias = await sbsPrompt(`"${customDs.name}" görünen adı (Alias):`, customDs.alias || customDs.name, 'Veri Kaynağını Düzenle');
+            if (newAlias && newAlias.trim()) { pushUndo(); customDs.alias = newAlias.trim(); renderDictionary(); }
+          }
+        } else if (act === 'delete') {
+          if (tInfo.colName && customDs) {
+            if (!await sbsConfirm(`"${customDs.name}.${tInfo.colName}" sütununu silmek istiyor musunuz?`, 'Sütunu Sil')) return;
+            pushUndo();
+            customDs.columns = (customDs.columns || []).filter(c => c.name !== tInfo.colName);
+            renderDictionary();
+            setStatus(`Sütun silindi: ${customDs.name}.${tInfo.colName}`);
+          } else if (customDs) {
+            if (!await sbsConfirm(`"${customDs.name}" veri kaynağını rapordan silmek istiyor musunuz?`, 'Veri Kaynağını Sil')) return;
+            pushUndo();
+            state.report.dataSources = state.report.dataSources.filter(x => x.name.toLowerCase() !== customDs.name.toLowerCase());
+            renderDictionary();
+            setStatus(`Veri kaynağı silindi: ${customDs.name}`);
+          }
+        } else if (act === 'expandAll') {
+          $$('.dict-cols').forEach(el => { el.hidden = false; });
+        } else if (act === 'collapseAll') {
+          $$('.dict-cols').forEach(el => { el.hidden = true; });
+        }
+      };
+    });
+
+    // Band Context Menu Actions
+    $$('[data-bctx]').forEach(item => {
+      item.onclick = () => {
+        hideContextMenu();
+        const act = item.dataset.bctx;
+        const bands = state.report?.bands || [];
+        const idx = bands.findIndex(b => b.id === state.selectedBandId);
+        const band = idx >= 0 ? bands[idx] : null;
+        if (!band) return;
+        if (act === 'setup') {
+          if (band.type === 'GroupHeader') openGroupBandModal(band);
+          else if (band.type === 'Data' || band.type === 'Table' || band.type === 'HierarchicalData') openDataBandModal(band);
+          else renderProperties();
+        } else if (act === 'paste') {
+          pasteClipboard();
+        } else if (act === 'toggleEnabled') {
+          pushUndo(); band.enabled = band.enabled === false ? true : false; renderAll();
+        } else if (act === 'toggleCanGrow') {
+          pushUndo(); band.canGrow = !band.canGrow; renderAll();
+        } else if (act === 'moveUp' && idx > 0) {
+          pushUndo(); [bands[idx - 1], bands[idx]] = [bands[idx], bands[idx - 1]]; renderAll();
+        } else if (act === 'moveDown' && idx < bands.length - 1) {
+          pushUndo(); [bands[idx], bands[idx + 1]] = [bands[idx + 1], bands[idx]]; renderAll();
+        } else if (act === 'delete') {
+          pushUndo(); bands.splice(idx, 1); state.selectedBandId = null; renderAll();
+        }
+      };
+    });
+
+    // Page / Form Context Menu Actions
+    $$('[data-pctx]').forEach(item => {
+      item.onclick = () => {
+        hideContextMenu();
+        const act = item.dataset.pctx;
+        const pg = state.report?.page;
+        if (act === 'pageSetup') openPageSetupModal();
+        else if (act === 'styles') openStyleDesignerModal();
+        else if (act === 'checker') openReportCheckerModal();
+        else if (act === 'paste') pasteClipboard();
+        else if (act === 'toggleGrid' && pg) { pushUndo(); pg.showGrid = !pg.showGrid; renderAll(); }
+        else if (act === 'toggleSnap' && pg) { pushUndo(); pg.snapToGrid = !pg.snapToGrid; renderAll(); }
+        else if (act === 'addPage') $('#btnAddReportPage')?.click();
+        else if (act === 'preview') $('#tabDocPreview')?.click();
+      };
     });
 
     // Preview Bar Actions
@@ -3097,7 +3493,8 @@
           }
         } else if (el.type === 'Image') {
           if (el.imageUrl) {
-            div.innerHTML = `<img src="${escapeHtml(el.imageUrl)}" style="max-width:100%;max-height:100%;object-fit:contain;" />`;
+            const fit = (el.imageFit || 'Contain').toLowerCase();
+            div.innerHTML = `<img src="${escapeHtml(el.imageUrl)}" style="width:100%;height:100%;object-fit:${fit};" />`;
           }
         } else if (el.type === 'Shape') {
           if (el.shapeType === 'Ellipse' || el.shapeType === 'Triangle' || el.shapeType === 'RoundedRectangle') {
@@ -3110,7 +3507,11 @@
         } else if (el.type === 'Chart') {
           div.innerHTML = buildChartSvg(el.chartType || 'Bar', el.chartData);
         } else {
-          div.textContent = el.text || '';
+          if (el.allowHtmlTags) {
+            div.innerHTML = renderSafeInlineHtml(el.text || '');
+          } else {
+            div.textContent = el.text || '';
+          }
         }
         pageEl.appendChild(div);
       });
@@ -3317,7 +3718,7 @@
             await loadReport(r.name);
           };
           item.querySelector('.btn-del').onclick = async () => {
-            if (!confirm(t('confirmDelete', `${r.name}.sbs`))) return;
+            if (!await sbsConfirm(t('confirmDelete', `${r.name}.sbs`), 'Raporu Sil')) return;
             await fetch(apiUrl(`/reports/${encodeURIComponent(r.name)}`), { method: 'DELETE' });
             openReportsModal();
           };
@@ -3642,7 +4043,7 @@
         name: c.value,
         type: c.dataset.colType || 'string'
       }));
-      if (picked.length === 0) { alert('En az 1 sütun seçin.'); return; }
+      if (picked.length === 0) { sbsAlert('En az 1 sütun seçin.'); return; }
 
       pushUndo();
       const pg = state.report.page;
@@ -3719,7 +4120,7 @@
     syncActivePageToPagesArray();
     let name = state.report.name;
     if (asNew) {
-      const input = prompt(t('promptName'), name);
+      const input = await sbsPrompt(t('promptName'), name, 'Farklı Kaydet');
       if (!input) return;
       name = input.replace(/\.sbs$/i, '');
       state.report.name = name;
@@ -3736,7 +4137,7 @@
       const badge = state.report.isMasterTemplate ? ' 👑 MASTER' : (state.report.masterReportName ? ` ↳ 👑 ${state.report.masterReportName}` : '');
       $('#reportNameLabel').textContent = `${name}.sbs${badge}`;
     } else {
-      alert('Kaydetme başarısız!');
+      sbsAlert('Kaydetme başarısız!', 'Hata');
     }
   }
 
@@ -3763,7 +4164,7 @@
       setStatus(`Dışa aktarıldı: ${a.download}`);
     } catch (err) {
       console.error(err);
-      alert(`Dışa aktarma hatası (${fmt}): ` + err.message);
+      sbsAlert(`Dışa aktarma hatası (${fmt}): ` + err.message, 'Dışa Aktarma Hatası');
     }
   }
 
@@ -3796,7 +4197,7 @@
         setStatus(t('loaded', file.name));
         $('#reportNameLabel').textContent = file.name;
       } catch (err) {
-        alert('Geçersiz .sbs dosyası: ' + err.message);
+        sbsAlert('Geçersiz .sbs dosyası: ' + err.message, 'Dosya Hatası');
       }
     };
     reader.readAsText(file);
@@ -3836,27 +4237,197 @@
     URL.revokeObjectURL(url);
   }
 
-  // ---------- Context Menu ----------
+  // ---------- Sleek Custom Dialogs (Replaces ALL native browser alert/confirm/prompt) ----------
+  function openSbsDialog({ mode = 'alert', title = 'SbsReport', message = '', defaultValue = '', danger = false }) {
+    return new Promise((resolve) => {
+      const modal = $('#sbsDialogModal');
+      const ttl = $('#sbsDlgTitle');
+      const msg = $('#sbsDlgMessage');
+      const inp = $('#sbsDlgInput');
+      const btnOk = $('#sbsDlgOk');
+      const btnCancel = $('#sbsDlgCancel');
+      const btnClose = $('#sbsDlgClose');
+      if (!modal || !msg || !btnOk) { resolve(mode === 'prompt' ? null : false); return; }
+
+      ttl.textContent = title;
+      msg.textContent = message;
+      inp.hidden = mode !== 'prompt';
+      inp.value = defaultValue ?? '';
+      btnCancel.hidden = mode === 'alert';
+      btnOk.textContent = mode === 'confirm' && danger ? 'Sil' : 'Tamam';
+      btnOk.style.background = danger ? '#dc2626' : '';
+      btnOk.style.borderColor = danger ? '#dc2626' : '';
+      modal.hidden = false;
+
+      const finish = (val) => {
+        modal.hidden = true;
+        window.removeEventListener('keydown', onKey, true);
+        resolve(val);
+      };
+      const onKey = (e) => {
+        if (e.key === 'Escape') { e.preventDefault(); finish(mode === 'prompt' ? null : false); }
+        else if (e.key === 'Enter') { e.preventDefault(); finish(mode === 'prompt' ? inp.value : true); }
+      };
+      window.addEventListener('keydown', onKey, true);
+      btnOk.onclick = () => finish(mode === 'prompt' ? inp.value : true);
+      btnCancel.onclick = () => finish(mode === 'prompt' ? null : false);
+      btnClose.onclick = () => finish(mode === 'prompt' ? null : false);
+      setTimeout(() => (mode === 'prompt' ? inp : btnOk).focus(), 20);
+    });
+  }
+  const sbsAlert = (message, title = 'Bilgi') => openSbsDialog({ mode: 'alert', title, message });
+  const sbsConfirm = (message, title = 'Onay', danger = true) => openSbsDialog({ mode: 'confirm', title, message, danger });
+  const sbsPrompt = (message, defaultValue = '', title = 'Giriş') => openSbsDialog({ mode: 'prompt', title, message, defaultValue });
+
+  // ---------- Context Menus (Component / Band / Page / Dictionary — Viewport-Clamped + Live Checkmarks) ----------
+  function positionCtxMenu(menu, x, y) {
+    menu.hidden = false;
+    const mw = menu.offsetWidth || 230;
+    const mh = menu.offsetHeight || 260;
+    menu.style.left = `${Math.min(x, Math.max(8, window.innerWidth - mw - 10))}px`;
+    menu.style.top = `${Math.min(y, Math.max(8, window.innerHeight - mh - 10))}px`;
+  }
   function showContextMenu(x, y) {
+    hideContextMenu();
     const menu = $('#ctxMenu');
     if (!menu) return;
-    menu.style.left = `${x}px`;
-    menu.style.top = `${y}px`;
-    menu.hidden = false;
+    const { comp } = findSelected();
+    const setChk = (id, val) => { const el = $(id); if (el) el.textContent = val ? '✓' : ''; };
+    setChk('#ctxChkHtml', !!comp?.allowHtmlTags);
+    setChk('#ctxChkCanGrow', !!comp?.canGrow);
+    setChk('#ctxChkGrowH', !!comp?.growToHeight);
+    setChk('#ctxChkShrink', !!comp?.shrinkFontToFit);
+    setChk('#ctxChkLock', !!comp?.locked);
+    positionCtxMenu(menu, x, y);
+  }
+  function showBandContextMenu(x, y, band) {
+    hideContextMenu();
+    const menu = $('#ctxBandMenu');
+    if (!menu) return;
+    const setChk = (id, val) => { const el = $(id); if (el) el.textContent = val ? '✓' : ''; };
+    setChk('#bctxChkEnabled', band?.enabled !== false);
+    setChk('#bctxChkCanGrow', !!band?.canGrow);
+    positionCtxMenu(menu, x, y);
+  }
+  function showPageContextMenu(x, y) {
+    hideContextMenu();
+    const menu = $('#ctxPageMenu');
+    if (!menu) return;
+    const pg = state.report?.page;
+    const setChk = (id, val) => { const el = $(id); if (el) el.textContent = val ? '✓' : ''; };
+    setChk('#pctxChkGrid', pg?.showGrid !== false);
+    setChk('#pctxChkSnap', pg?.snapToGrid !== false);
+    positionCtxMenu(menu, x, y);
   }
   function hideContextMenu() {
-    const menu = $('#ctxMenu');
-    if (menu) menu.hidden = true;
+    ['#ctxMenu', '#ctxBandMenu', '#ctxPageMenu', '#ctxDictMenu'].forEach(sel => {
+      const m = $(sel);
+      if (m) m.hidden = true;
+    });
   }
 
-  // ---------- 4-Tab Text / Expression Editor ----------
+  let _dictCtxTarget = null; // { dsName, colName, isCustom }
+  function showDictContextMenu(x, y, target) {
+    hideContextMenu();
+    _dictCtxTarget = target;
+    const menu = $('#ctxDictMenu');
+    if (!menu) return;
+    const delItem = menu.querySelector('[data-dctx="delete"]');
+    const editItem = menu.querySelector('[data-dctx="edit"]');
+    if (delItem) delItem.style.display = target.isCustom ? '' : 'none';
+    if (editItem) editItem.style.display = target.isCustom ? '' : 'none';
+    positionCtxMenu(menu, x, y);
+  }
+
+  // ---------- Column Editor Modal (Yeni Sütun / Hesaplanan Yeni Sütun) ----------
+  let _colEditCtx = null; // { dsName, isCalculated, existingCol }
+  function openColumnEditorModal(dsName, { isCalculated = false, existingCol = null } = {}) {
+    const modal = $('#colEditorModal');
+    if (!modal || !state.report) return;
+    _colEditCtx = { dsName, isCalculated, existingCol };
+    const titleEl = $('#colEditorTitle');
+    const srcWrap = $('#colSourceNameWrap');
+    const exprWrap = $('#colExprWrap');
+    const hintEl = $('#colEditorHint');
+    if (titleEl) titleEl.textContent = existingCol
+      ? (isCalculated ? '𝑓𝑥 Hesaplanan Sütunu Düzenle' : 'abc Sütunu Düzenle')
+      : (isCalculated ? '𝑓𝑥 Hesaplanan Yeni Sütun' : 'abc Yeni Sütun');
+    if (srcWrap) srcWrap.hidden = isCalculated;
+    if (exprWrap) exprWrap.hidden = !isCalculated;
+    if (hintEl) hintEl.textContent = isCalculated
+      ? 'İfade her satır için otomatik hesaplanır (Örn: {Fiyat * Adet})'
+      : `"${dsName}" veri kaynağına sütun tanımlar`;
+
+    $('#colNameInSource').value = existingCol?.nameInSource || existingCol?.name || '';
+    $('#colName').value = existingCol?.name || '';
+    $('#colAlias').value = existingCol?.alias || existingCol?.name || '';
+    $('#colDataType').value = existingCol?.dataType || 'string';
+    $('#colExpression').value = existingCol?.expression || '';
+    modal.hidden = false;
+    setTimeout(() => ($('#colName') || $('#colNameInSource'))?.focus(), 20);
+  }
+
+  function applyColumnEditorModal() {
+    if (!_colEditCtx || !state.report) return;
+    const { dsName, isCalculated, existingCol } = _colEditCtx;
+    const name = ($('#colName').value || '').trim();
+    if (!name) { sbsAlert('Lütfen bir sütun adı girin.', 'Eksik Bilgi'); return; }
+    const alias = ($('#colAlias').value || '').trim() || name;
+    const nameInSource = ($('#colNameInSource').value || '').trim() || name;
+    const dataType = $('#colDataType').value || 'string';
+    const expression = ($('#colExpression').value || '').trim();
+    if (isCalculated && !expression) { sbsAlert('Hesaplanan sütun için bir ifade girin (Örn: {Tutar * 1.20}).', 'Eksik İfade'); return; }
+
+    if (!state.report.dataSources) state.report.dataSources = [];
+    let targetDs = state.report.dataSources.find(x => x.name.toLowerCase() === dsName.toLowerCase());
+    if (!targetDs) {
+      // Promote demo source reference to editable report DataSource so user can add calculated columns to it too!
+      const demo = state.demoSources.find(x => x.name.toLowerCase() === dsName.toLowerCase());
+      targetDs = {
+        name: demo ? demo.name : dsName,
+        alias: demo ? (demo.alias || demo.name) : dsName,
+        type: 'demo',
+        columns: demo ? demo.columns.map(c => ({ name: c.name, dataType: c.type || 'string' })) : []
+      };
+      state.report.dataSources.push(targetDs);
+    }
+    pushUndo();
+    if (!targetDs.columns) targetDs.columns = [];
+    if (existingCol) {
+      existingCol.name = name;
+      existingCol.alias = alias;
+      existingCol.nameInSource = nameInSource;
+      existingCol.dataType = dataType;
+      existingCol.isCalculated = isCalculated;
+      existingCol.expression = isCalculated ? expression : null;
+    } else {
+      targetDs.columns.push({
+        name,
+        alias,
+        nameInSource,
+        dataType,
+        isCalculated,
+        expression: isCalculated ? expression : null
+      });
+    }
+    $('#colEditorModal').hidden = true;
+    renderDictionary();
+    setStatus(`${isCalculated ? 'Hesaplanan sütun' : 'Sütun'} kaydedildi: ${dsName}.${name}`);
+  }
+
+  // ---------- 4-Tab Text / Expression Editor (Fixed Size, Searchable, HTML Toolbar) ----------
   function openExpressionEditor(comp) {
     const modal = $('#exprModal');
     const ta = $('#exprText');
     const fieldsDiv = $('#exprFields');
+    const funcsDiv = $('#exprFunctions');
+    const searchInput = $('#exprSearchInput');
+    const allowHtmlChk = $('#exprAllowHtml');
     if (!modal || !ta) return;
 
     ta.value = comp.text || '';
+    if (allowHtmlChk) allowHtmlChk.checked = !!comp.allowHtmlTags;
+    if (searchInput) searchInput.value = '';
     modal.hidden = false;
 
     const setExprTab = (tab) => {
@@ -3865,19 +4436,55 @@
       $('#exprPaneColumn').hidden = tab !== 'column';
       $('#exprPaneSysvar').hidden = tab !== 'sysvar';
       $('#exprPaneSummary').hidden = tab !== 'summary';
+      applyExprSearch();
     };
+    const setLeftSubTab = (sub) => {
+      $$('#exprModal [data-exprleft]').forEach(b => b.classList.toggle('active', b.dataset.exprleft === sub));
+      if (fieldsDiv) fieldsDiv.hidden = sub !== 'fields';
+      if (funcsDiv) funcsDiv.hidden = sub !== 'functions';
+      applyExprSearch();
+    };
+
+    const applyExprSearch = () => {
+      const q = (searchInput?.value || '').trim().toLowerCase();
+      $$('#exprFields .expr-field, #exprFunctions .expr-fn, #exprColTree .sti-tree-item, #exprSysVarList .sti-tree-item').forEach(el => {
+        el.style.display = (!q || el.textContent.toLowerCase().includes(q)) ? '' : 'none';
+      });
+    };
+
     setExprTab('expression');
+    setLeftSubTab('fields');
     $$('#exprModal [data-exprtab]').forEach(b => { b.onclick = () => setExprTab(b.dataset.exprtab); });
+    $$('#exprModal [data-exprleft]').forEach(b => { b.onclick = () => setLeftSubTab(b.dataset.exprleft); });
+    if (searchInput) searchInput.oninput = applyExprSearch;
+
+    // Quick HTML tag wrap buttons (auto-enables AllowHtmlTags!)
+    $$('#exprModal [data-htmlwrap]').forEach(btn => {
+      btn.onclick = () => {
+        const tag = btn.dataset.htmlwrap;
+        const s = ta.selectionStart ?? ta.value.length;
+        const e = ta.selectionEnd ?? ta.value.length;
+        const sel = ta.value.slice(s, e) || 'Metin';
+        let ins = '';
+        if (tag === 'br') ins = '<br/>';
+        else if (tag === 'color') ins = `<color=#dc2626>${sel}</color>`;
+        else ins = `<${tag}>${sel}</${tag}>`;
+        ta.value = ta.value.slice(0, s) + ins + ta.value.slice(e);
+        if (allowHtmlChk) allowHtmlChk.checked = true;
+        ta.focus();
+      };
+    });
 
     const allSources = getAllDataSources();
 
-    // Tab 1: Expression fields
+    // Tab 1: Expression fields (report's own DataSources first!)
     fieldsDiv.innerHTML = '';
     allSources.forEach(ds => {
       ds.columns.forEach(col => {
         const item = document.createElement('div');
         item.className = 'expr-field';
         item.textContent = `{${ds.name}.${col.name}}`;
+        item.title = `${ds.name}.${col.name}`;
         item.onclick = () => insertAtCursor(ta, `{${ds.name}.${col.name}}`);
         fieldsDiv.appendChild(item);
       });
@@ -3906,6 +4513,7 @@
           el.ondblclick = () => {
             pushUndo();
             comp.text = `{${ds.name}.${col.name}}`;
+            if (allowHtmlChk) comp.allowHtmlTags = allowHtmlChk.checked;
             modal.hidden = true;
             renderAll();
           };
@@ -3921,9 +4529,15 @@
       const sysVars = [
         { k: '{PageNumber}', d: 'Sayfa Numarası' },
         { k: '{TotalPageCount}', d: 'Toplam Sayfa Sayısı' },
+        { k: '{PageNofM}', d: 'Sayfa X / Y' },
         { k: '{Today}', d: 'Bugünün Tarihi' },
         { k: '{Now}', d: 'Tarih & Saat' },
+        { k: '{Time}', d: 'Saat' },
         { k: '{Line}', d: 'Satır Numarası' },
+        { k: '{GroupLine}', d: 'Grup Satır No' },
+        { k: '{LineThrough}', d: 'Genel Satır No' },
+        { k: '{IsFirstPage}', d: 'İlk Sayfa mı?' },
+        { k: '{IsLastPage}', d: 'Son Sayfa mı?' },
         { k: '{ReportName}', d: 'Rapor Adı' },
         ...Object.keys(state.report?.variables || {}).map(v => ({ k: `{${v}}`, d: 'Rapor Parametresi' }))
       ];
@@ -3963,6 +4577,7 @@
     $('#btnExprOk').onclick = () => {
       pushUndo();
       comp.text = ta.value;
+      if (allowHtmlChk) comp.allowHtmlTags = allowHtmlChk.checked;
       modal.hidden = true;
       renderAll();
     };
@@ -4336,10 +4951,537 @@
     }
   }
 
+  // ---------- Report Checker (Stimulsoft Report Checker Parity) ----------
+  function runReportChecker() {
+    const issues = [];
+    if (!state.report) return issues;
+    const page = state.report.page || { widthMm: 210, marginLeftMm: 10, marginRightMm: 10 };
+    const printableW = (page.widthMm || 210) - (page.marginLeftMm || 0) - (page.marginRightMm || 0);
+    const knownDs = new Set([
+      ...(state.demoSources || []).map(d => (d.name || '').toLowerCase()),
+      ...(state.report.dataSources || []).map(d => (d.name || '').toLowerCase())
+    ]);
+    const nameCounts = new Map();
+
+    for (const band of (state.report.bands || [])) {
+      const bKey = (band.name || '').trim().toLowerCase();
+      if (bKey) nameCounts.set(bKey, (nameCounts.get(bKey) || 0) + 1);
+
+      if (band.type === 'GroupHeader' && !(band.groupBy || '').trim()) {
+        issues.push({
+          severity: 'error',
+          rule: 'NoConditionAtGroup',
+          target: band.name,
+          bandId: band.id,
+          message: `Grup Başlığı "${band.name}" için gruplama sütunu (GroupBy) tanımlanmamış.`
+        });
+      }
+      if ((band.type === 'Data' || band.type === 'HierarchicalData') && band.dataSource && !knownDs.has(band.dataSource.toLowerCase())) {
+        issues.push({
+          severity: 'warning',
+          rule: 'UndefinedDataSource',
+          target: band.name,
+          bandId: band.id,
+          message: `"${band.name}" bandındaki "${band.dataSource}" veri kaynağı sözlükte tanımlı değil (çalışma zamanında DataSet ile sağlanıyorsa normaldir).`
+        });
+      }
+
+      for (const comp of (band.components || [])) {
+        const cKey = (comp.name || '').trim().toLowerCase();
+        if (cKey) nameCounts.set(cKey, (nameCounts.get(cKey) || 0) + 1);
+
+        if ((comp.widthMm || 0) <= 0 || (comp.heightMm || 0) <= 0) {
+          issues.push({
+            severity: 'error',
+            rule: 'WidthHeightZero',
+            target: comp.name,
+            bandId: band.id,
+            compId: comp.id,
+            message: `"${comp.name}" bileşeninin genişlik veya yüksekliği 0 veya negatif.`
+          });
+        }
+        if ((comp.xMm || 0) + (comp.widthMm || 0) > printableW + 1) {
+          issues.push({
+            severity: 'warning',
+            rule: 'LocationOutsidePage',
+            target: comp.name,
+            bandId: band.id,
+            compId: comp.id,
+            message: `"${comp.name}" bileşeni yazdırılabilir sayfa genişliğini (${printableW.toFixed(0)} mm) aşıyor.`
+          });
+        }
+        if ((comp.yMm || 0) + (comp.heightMm || 0) > (band.heightMm || 0) + 1) {
+          issues.push({
+            severity: 'warning',
+            rule: 'ComponentBoundsOutOfBand',
+            target: comp.name,
+            bandId: band.id,
+            compId: comp.id,
+            message: `"${comp.name}" bileşeni "${band.name}" bandının yüksekliğini (${band.heightMm} mm) aşıyor.`
+          });
+        }
+        if (comp.color && comp.backgroundColor &&
+            comp.backgroundColor !== 'transparent' &&
+            comp.color.toLowerCase() === comp.backgroundColor.toLowerCase() &&
+            (comp.text || '').trim().length > 0) {
+          issues.push({
+            severity: 'warning',
+            rule: 'TextColorEqualToBackColor',
+            target: comp.name,
+            bandId: band.id,
+            compId: comp.id,
+            message: `"${comp.name}" metin rengi ile arka plan rengi aynı (${comp.color}) — metin görünmeyebilir.`
+          });
+        }
+        if (typeof comp.text === 'string' && comp.text.includes('{')) {
+          let depth = 0;
+          for (const ch of comp.text) {
+            if (ch === '{') depth++;
+            else if (ch === '}') depth--;
+          }
+          if (depth !== 0) {
+            issues.push({
+              severity: 'error',
+              rule: 'UnclosedExpression',
+              target: comp.name,
+              bandId: band.id,
+              compId: comp.id,
+              message: `"${comp.name}" içindeki ifade süslü parantezleri ({ ... }) dengesiz.`
+            });
+          }
+        }
+      }
+    }
+
+    for (const [nm, cnt] of nameCounts.entries()) {
+      if (cnt > 1) {
+        issues.push({
+          severity: 'warning',
+          rule: 'DuplicatedName',
+          target: nm,
+          message: `"${nm}" adı raporda ${cnt} kez kullanılmış (benzersiz isimlendirme önerilir).`
+        });
+      }
+    }
+    return issues;
+  }
+
+  function updateCheckerBadge() {
+    const badge = $('#statusBadge');
+    if (!badge) return;
+    const issues = runReportChecker();
+    const errCount = issues.filter(i => i.severity === 'error').length;
+    const warnCount = issues.length - errCount;
+    if (errCount > 0) {
+      badge.textContent = `✕ ${errCount} Hata · ⚠ ${warnCount}`;
+      badge.style.background = '#dc2626';
+      badge.style.color = '#ffffff';
+    } else if (warnCount > 0) {
+      badge.textContent = `⚠ ${warnCount} Uyarı`;
+      badge.style.background = '#d97706';
+      badge.style.color = '#ffffff';
+    } else {
+      badge.textContent = '✓ 0';
+      badge.style.background = '';
+      badge.style.color = '';
+    }
+  }
+
+  function openReportCheckerModal() {
+    const modal = $('#reportCheckerModal');
+    const list = $('#checkerIssuesList');
+    const summary = $('#checkerSummary');
+    if (!modal || !list || !summary) return;
+    const issues = runReportChecker();
+    const errCount = issues.filter(i => i.severity === 'error').length;
+    const warnCount = issues.length - errCount;
+    summary.textContent = issues.length === 0
+      ? '✅ Harika! Raporda hiçbir hata veya uyarı bulunamadı.'
+      : `Bulunan: ${errCount} Hata, ${warnCount} Uyarı`;
+    list.innerHTML = '';
+    if (issues.length === 0) {
+      list.innerHTML = '<div style="padding:18px;text-align:center;color:var(--text-muted);font-size:12px;">Tüm denetim kuralları başarıyla geçti.</div>';
+    } else {
+      issues.forEach(iss => {
+        const row = document.createElement('div');
+        row.style.cssText = 'display:flex;align-items:flex-start;gap:8px;padding:8px 10px;border:1px solid var(--border);border-radius:6px;cursor:pointer;background:var(--panel-bg);font-size:12px;';
+        const ico = iss.severity === 'error' ? '🔴' : '🟡';
+        row.innerHTML = `<span>${ico}</span><div style="flex:1;"><div style="font-weight:600;">${escapeHtml(iss.target)} <span style="font-weight:400;opacity:.65;font-size:10.5px;">[${iss.rule}]</span></div><div style="color:var(--text-muted);margin-top:2px;">${escapeHtml(iss.message)}</div></div>`;
+        row.onclick = () => {
+          if (iss.compId) {
+            state.selectedIds = new Set([iss.compId]);
+            state.selectedBandId = iss.bandId || null;
+          } else if (iss.bandId) {
+            state.selectedIds = new Set();
+            state.selectedBandId = iss.bandId;
+          }
+          modal.hidden = true;
+          renderCanvas();
+          renderProperties();
+        };
+        list.appendChild(row);
+      });
+    }
+    modal.hidden = false;
+  }
+
+  // ---------- Page Setup Modal (Stimulsoft Sayfa Yapısı Parity — Fixed Size + Live Previews) ----------
+  function setPageSetupTab(tab) {
+    $$('#pageSetupModal [data-pstab]').forEach(b => b.classList.toggle('active', b.dataset.pstab === tab));
+    $('#psPanePaper').hidden = tab !== 'paper';
+    $('#psPaneGrid').hidden = tab !== 'grid';
+    $('#psPaneWatermark').hidden = tab !== 'watermark';
+  }
+
+  function updatePageSetupPreviews() {
+    const mini = $('#psMiniPreview');
+    const inner = $('#psMiniMargins');
+    const land = $('#psOrientation')?.value === 'Landscape';
+    if (mini) {
+      mini.style.width = land ? '106px' : '76px';
+      mini.style.height = land ? '76px' : '106px';
+    }
+    if (inner) {
+      const mt = Math.min(18, Math.max(2, (parseFloat($('#psMarginTop')?.value) || 0) * 0.45));
+      const mr = Math.min(18, Math.max(2, (parseFloat($('#psMarginRight')?.value) || 0) * 0.45));
+      const mb = Math.min(18, Math.max(2, (parseFloat($('#psMarginBottom')?.value) || 0) * 0.45));
+      const ml = Math.min(18, Math.max(2, (parseFloat($('#psMarginLeft')?.value) || 0) * 0.45));
+      inner.style.inset = `${mt}px ${mr}px ${mb}px ${ml}px`;
+      inner.textContent = $('#psPaperSize')?.value || 'A4';
+    }
+    const wmPrev = $('#psWmLivePreview');
+    const wmCol = $('#psWmColor')?.value || '#cbd5e1';
+    const sw = $('#psWmColorSwatch');
+    const lbl = $('#psWmColorLbl');
+    if (sw) sw.style.background = wmCol;
+    if (lbl) lbl.textContent = colorDisplayName(wmCol);
+    if (wmPrev) {
+      wmPrev.textContent = ($('#psWmText')?.value || 'SOBİS').trim() || 'SOBİS';
+      wmPrev.style.color = wmCol;
+      wmPrev.style.opacity = $('#psWmEnabled')?.checked ? Math.max(0.05, parseFloat($('#psWmOpacity')?.value) || 0.18) : 0.08;
+      wmPrev.style.fontSize = `${Math.min(40, Math.max(12, (parseFloat($('#psWmSize')?.value) || 72) * 0.42))}px`;
+      wmPrev.style.transform = `rotate(${parseFloat($('#psWmAngle')?.value) || -45}deg)`;
+    }
+  }
+
+  function openPageSetupModal() {
+    const modal = $('#pageSetupModal');
+    if (!modal || !state.report) return;
+    const pg = state.report.page || (state.report.page = {});
+    const wm = pg.watermark || (pg.watermark = { enabled: false, text: 'SOBİS', color: '#cbd5e1', fontSizePt: 72, angle: -45, opacity: 0.18 });
+    $('#psPaperSize').value = pg.paperSize || 'A4';
+    $('#psOrientation').value = pg.orientation || 'Portrait';
+    $('#psWidthMm').value = pg.widthMm || 210;
+    $('#psHeightMm').value = pg.heightMm || 297;
+    $('#psMarginTop').value = pg.marginTopMm ?? 10;
+    $('#psMarginRight').value = pg.marginRightMm ?? 10;
+    $('#psMarginBottom').value = pg.marginBottomMm ?? 10;
+    $('#psMarginLeft').value = pg.marginLeftMm ?? 10;
+    if ($('#psGridSize')) $('#psGridSize').value = pg.gridSizeMm ?? 2;
+    if ($('#psShowGrid')) $('#psShowGrid').checked = pg.showGrid !== false;
+    if ($('#psSnapToGrid')) $('#psSnapToGrid').checked = pg.snapToGrid !== false;
+    if ($('#psFormName')) $('#psFormName').value = pg.formName || 'Form';
+    $('#psWmEnabled').checked = !!wm.enabled;
+    $('#psWmText').value = wm.text || '';
+    $('#psWmColor').value = wm.color || '#cbd5e1';
+    $('#psWmSize').value = wm.fontSizePt || 72;
+    $('#psWmAngle').value = wm.angle ?? -45;
+    $('#psWmOpacity').value = wm.opacity ?? 0.18;
+    setPageSetupTab('paper');
+    updatePageSetupPreviews();
+    modal.hidden = false;
+  }
+
+  function applyPageSetupModal() {
+    if (!state.report) return;
+    pushUndo();
+    const pg = state.report.page || (state.report.page = {});
+    pg.paperSize = $('#psPaperSize').value;
+    pg.orientation = $('#psOrientation').value;
+    pg.widthMm = Math.max(40, parseFloat($('#psWidthMm').value) || 210);
+    pg.heightMm = Math.max(40, parseFloat($('#psHeightMm').value) || 297);
+    pg.marginTopMm = Math.max(0, parseFloat($('#psMarginTop').value) || 0);
+    pg.marginRightMm = Math.max(0, parseFloat($('#psMarginRight').value) || 0);
+    pg.marginBottomMm = Math.max(0, parseFloat($('#psMarginBottom').value) || 0);
+    pg.marginLeftMm = Math.max(0, parseFloat($('#psMarginLeft').value) || 0);
+    if ($('#psGridSize')) pg.gridSizeMm = Math.max(1, parseFloat($('#psGridSize').value) || 2);
+    if ($('#psShowGrid')) pg.showGrid = $('#psShowGrid').checked;
+    if ($('#psSnapToGrid')) pg.snapToGrid = $('#psSnapToGrid').checked;
+    if ($('#psFormName')) pg.formName = ($('#psFormName').value || 'Form').trim();
+    pg.watermark = {
+      enabled: $('#psWmEnabled').checked,
+      text: $('#psWmText').value || '',
+      fontFamily: pg.watermark?.fontFamily || 'Inter, Arial, sans-serif',
+      color: $('#psWmColor').value || '#cbd5e1',
+      fontSizePt: Math.max(12, parseFloat($('#psWmSize').value) || 72),
+      angle: parseFloat($('#psWmAngle').value) || -45,
+      opacity: Math.max(0.02, Math.min(1, parseFloat($('#psWmOpacity').value) || 0.18))
+    };
+    $('#pageSetupModal').hidden = true;
+    if (typeof syncPageRibbonFromModel === 'function') syncPageRibbonFromModel();
+    renderAll();
+  }
+
+  // ---------- Style Designer Modal (Stimulsoft StyleDesignerForm Parity) ----------
+  let _activeStyleId = null;
+  function openStyleDesignerModal() {
+    const modal = $('#styleDesignerModal');
+    if (!modal || !state.report) return;
+    if (!Array.isArray(state.report.styles)) state.report.styles = [];
+    if (!_activeStyleId && state.report.styles.length > 0) _activeStyleId = state.report.styles[0].id;
+    renderStyleDesigner();
+    modal.hidden = false;
+  }
+
+  function renderStyleDesigner() {
+    const list = $('#styleListPane');
+    const editor = $('#styleEditorPane');
+    if (!list || !editor || !state.report) return;
+    const styles = state.report.styles || [];
+    list.innerHTML = '';
+    if (styles.length === 0) {
+      list.innerHTML = '<div style="font-size:11.5px;color:var(--text-muted);padding:8px;">Henüz stil yok.</div>';
+      editor.innerHTML = '<div style="color:var(--text-muted);font-size:12px;">"+ Yeni Stil" veya "Kurumsal Şablon Stilleri Yükle" ile başlayın.</div>';
+      return;
+    }
+    if (!styles.some(s => s.id === _activeStyleId)) _activeStyleId = styles[0].id;
+    styles.forEach(st => {
+      const item = document.createElement('div');
+      const active = st.id === _activeStyleId;
+      item.style.cssText = `padding:6px 8px;border-radius:5px;cursor:pointer;font-size:12px;display:flex;align-items:center;justify-content:space-between;border:1px solid ${active ? '#3b82f6' : 'var(--border)'};background:${active ? 'rgba(59,130,246,.12)' : 'transparent'};`;
+      const swStyle = `display:inline-block;width:14px;height:14px;border-radius:3px;background:${st.backgroundColor && st.backgroundColor !== 'transparent' ? st.backgroundColor : '#fff'};border:1px solid ${st.borderColor || '#cbd5e1'};color:${st.color || '#111827'};font-size:9px;text-align:center;line-height:12px;font-weight:${st.bold ? 700 : 400};`;
+      item.innerHTML = `<span style="display:flex;align-items:center;gap:6px;"><span style="${swStyle}">A</span><span>${escapeHtml(st.name)}</span></span><button type="button" class="rbtn rbtn-xs st-del" title="Sil" style="padding:0 4px;">✕</button>`;
+      item.onclick = (e) => {
+        if (e.target.closest('.st-del')) return;
+        _activeStyleId = st.id;
+        renderStyleDesigner();
+      };
+      item.querySelector('.st-del').onclick = () => {
+        pushUndo();
+        state.report.styles = state.report.styles.filter(x => x.id !== st.id);
+        renderStyleDesigner();
+      };
+      list.appendChild(item);
+    });
+
+    const cur = styles.find(s => s.id === _activeStyleId);
+    if (!cur) return;
+    editor.innerHTML = `
+      <div style="padding:10px;border-radius:6px;text-align:center;font-family:${escapeHtml(cur.fontFamily || 'Segoe UI, sans-serif')};font-size:${cur.fontSizePt || 10}pt;font-weight:${cur.bold ? 700 : 400};font-style:${cur.italic ? 'italic' : 'normal'};color:${cur.color || '#111827'};background:${cur.backgroundColor || 'transparent'};border:${cur.borderWidthPx || 0}px solid ${cur.borderColor || '#cbd5e1'};">
+        Örnek Stil Önizleme — ${escapeHtml(cur.name)}
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:12px;">
+        <label><span>Stil Adı</span><input type="text" id="stName" class="rinput" value="${escapeHtml(cur.name)}" /></label>
+        <label><span>Yazı Boyutu (pt)</span><input type="number" id="stSize" class="rinput" value="${cur.fontSizePt || 10}" min="6" max="72" /></label>
+        <label><span>Metin Rengi</span><input type="color" id="stColor" class="rinput" value="${cur.color || '#111827'}" /></label>
+        <label><span>Arka Plan (transparent veya #hex)</span><input type="text" id="stBg" class="rinput" value="${escapeHtml(cur.backgroundColor || 'transparent')}" /></label>
+        <label><span>Kenarlık Rengi</span><input type="color" id="stBorderColor" class="rinput" value="${cur.borderColor || '#cbd5e1'}" /></label>
+        <label><span>Kenarlık Kalınlığı (px)</span><input type="number" id="stBorderWidth" class="rinput" value="${cur.borderWidthPx || 0}" min="0" max="6" /></label>
+        <label style="display:flex;align-items:center;gap:6px;"><input type="checkbox" id="stBold" ${cur.bold ? 'checked' : ''} /> <span>Kalın (Bold)</span></label>
+        <label style="display:flex;align-items:center;gap:6px;"><input type="checkbox" id="stItalic" ${cur.italic ? 'checked' : ''} /> <span>İtalik (Italic)</span></label>
+      </div>
+    `;
+    const commit = () => {
+      pushUndo();
+      cur.name = $('#stName').value || cur.name;
+      cur.fontSizePt = parseFloat($('#stSize').value) || 10;
+      cur.color = $('#stColor').value || '#111827';
+      cur.backgroundColor = $('#stBg').value || 'transparent';
+      cur.borderColor = $('#stBorderColor').value || '#cbd5e1';
+      cur.borderWidthPx = parseFloat($('#stBorderWidth').value) || 0;
+      cur.bold = $('#stBold').checked;
+      cur.italic = $('#stItalic').checked;
+      renderStyleDesigner();
+    };
+    editor.querySelectorAll('input').forEach(inp => inp.onchange = commit);
+  }
+
+  function applyActiveStyleToSelected() {
+    const styles = state.report?.styles || [];
+    const cur = styles.find(s => s.id === _activeStyleId);
+    if (!cur || !state.selectedIds || state.selectedIds.size === 0) return;
+    pushUndo();
+    for (const band of (state.report.bands || [])) {
+      for (const comp of (band.components || [])) {
+        if (state.selectedIds.has(comp.id)) {
+          comp.fontSizePt = cur.fontSizePt;
+          comp.bold = !!cur.bold;
+          comp.italic = !!cur.italic;
+          comp.color = cur.color;
+          comp.backgroundColor = cur.backgroundColor;
+          comp.borderColor = cur.borderColor;
+          comp.borderWidthPx = cur.borderWidthPx;
+        }
+      }
+    }
+    renderCanvas();
+    renderProperties();
+  }
+
+  // ---------- Border Setup Modal (Stimulsoft InitializeBorderSetupForm Parity) ----------
+  let _bsState = { top: true, right: true, bottom: true, left: true, style: 'Solid', width: 1, color: '#334155' };
+  function openBorderSetupModal() {
+    const modal = $('#borderSetupModal');
+    const { comp } = findSelected();
+    if (!modal || !comp) return;
+    const sides = comp.borderSides || 'All';
+    const isAll = sides === 'All' || sides === 'Box';
+    const isNone = sides === 'None' || (comp.borderWidthPx || 0) <= 0;
+    _bsState = {
+      top: !isNone && (isAll || sides.includes('Top')),
+      right: !isNone && (isAll || sides.includes('Right')),
+      bottom: !isNone && (isAll || sides.includes('Bottom')),
+      left: !isNone && (isAll || sides.includes('Left')),
+      style: comp.borderStyle || 'Solid',
+      width: Math.max(1, comp.borderWidthPx || 1),
+      color: comp.borderColor || '#334155'
+    };
+    $('#bsStyle').value = _bsState.style;
+    $('#bsWidth').value = _bsState.width;
+    updateBorderSetupPreview();
+    modal.hidden = false;
+  }
+  function updateBorderSetupPreview() {
+    const box = $('#bsPreviewBox');
+    const sw = $('#bsColorSwatch');
+    const lbl = $('#bsColorLbl');
+    if (sw) sw.style.background = _bsState.color;
+    if (lbl) lbl.textContent = colorDisplayName(_bsState.color);
+    $$('#borderSetupModal [data-bside]').forEach(b => {
+      const s = b.dataset.bside;
+      const on = (s === 'All' && _bsState.top && _bsState.right && _bsState.bottom && _bsState.left)
+        || (s === 'None' && !_bsState.top && !_bsState.right && !_bsState.bottom && !_bsState.left)
+        || (s === 'Top' && _bsState.top)
+        || (s === 'Bottom' && _bsState.bottom)
+        || (s === 'Left' && _bsState.left)
+        || (s === 'Right' && _bsState.right);
+      b.classList.toggle('active', on);
+    });
+    if (box) {
+      const bStr = `${_bsState.width}px ${_bsState.style.toLowerCase()} ${_bsState.color}`;
+      box.style.borderTop = _bsState.top ? bStr : '1px dashed #e2e8f0';
+      box.style.borderRight = _bsState.right ? bStr : '1px dashed #e2e8f0';
+      box.style.borderBottom = _bsState.bottom ? bStr : '1px dashed #e2e8f0';
+      box.style.borderLeft = _bsState.left ? bStr : '1px dashed #e2e8f0';
+    }
+  }
+  function applyBorderSetupModal() {
+    const selected = [];
+    for (const band of (state.report?.bands || [])) {
+      for (const c of (band.components || [])) {
+        if (state.multiIds?.has(c.id) || c.id === state.selectedCompId) selected.push(c);
+      }
+    }
+    if (selected.length === 0) return;
+    pushUndo();
+    const parts = [];
+    if (_bsState.top) parts.push('Top');
+    if (_bsState.right) parts.push('Right');
+    if (_bsState.bottom) parts.push('Bottom');
+    if (_bsState.left) parts.push('Left');
+    const sidesStr = parts.length === 4 ? 'All' : (parts.length === 0 ? 'None' : parts.join(','));
+    selected.forEach(c => {
+      c.borderSides = sidesStr;
+      c.borderWidthPx = parts.length === 0 ? 0 : Math.max(0.5, _bsState.width);
+      c.borderStyle = _bsState.style;
+      c.borderColor = _bsState.color;
+    });
+    $('#borderSetupModal').hidden = true;
+    renderAll();
+  }
+
   // Launch on DOM ready
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', init);
-  } else {
+  function bootDesigner() {
     init();
+    $('#btnCloseColEditor')?.addEventListener('click', () => { $('#colEditorModal').hidden = true; });
+    $('#btnColEditorCancel')?.addEventListener('click', () => { $('#colEditorModal').hidden = true; });
+    $('#btnColEditorOk')?.addEventListener('click', applyColumnEditorModal);
+    $('#colNameInSource')?.addEventListener('input', (e) => {
+      if (!$('#colName').value) $('#colName').value = e.target.value;
+      if (!$('#colAlias').value) $('#colAlias').value = e.target.value;
+    });
+    $('#btnCloseBorderModal')?.addEventListener('click', () => { $('#borderSetupModal').hidden = true; });
+    $('#btnBorderCancel')?.addEventListener('click', () => { $('#borderSetupModal').hidden = true; });
+    $('#btnBorderOk')?.addEventListener('click', applyBorderSetupModal);
+    $$('#borderSetupModal [data-bside]').forEach(btn => {
+      btn.onclick = () => {
+        const s = btn.dataset.bside;
+        if (s === 'All') { _bsState.top = _bsState.right = _bsState.bottom = _bsState.left = true; }
+        else if (s === 'None') { _bsState.top = _bsState.right = _bsState.bottom = _bsState.left = false; }
+        else if (s === 'Top') _bsState.top = !_bsState.top;
+        else if (s === 'Bottom') _bsState.bottom = !_bsState.bottom;
+        else if (s === 'Left') _bsState.left = !_bsState.left;
+        else if (s === 'Right') _bsState.right = !_bsState.right;
+        updateBorderSetupPreview();
+      };
+    });
+    $('#bsStyle')?.addEventListener('change', (e) => { _bsState.style = e.target.value; updateBorderSetupPreview(); });
+    $('#bsWidth')?.addEventListener('input', (e) => { _bsState.width = parseFloat(e.target.value) || 0; updateBorderSetupPreview(); });
+    $('#bsColorBtn')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openColorPopover(e.currentTarget, _bsState.color, false, (c) => { _bsState.color = c; updateBorderSetupPreview(); });
+    });
+    $('#statusBadge')?.addEventListener('click', openReportCheckerModal);
+    $('#btnCloseCheckerModal')?.addEventListener('click', () => { $('#reportCheckerModal').hidden = true; });
+    $('#btnCheckerOk')?.addEventListener('click', () => { $('#reportCheckerModal').hidden = true; });
+    $('#btnRerunChecker')?.addEventListener('click', () => { updateCheckerBadge(); openReportCheckerModal(); });
+    $('#btnOpenPageSetup')?.addEventListener('click', openPageSetupModal);
+    $('#btnClosePageSetup')?.addEventListener('click', () => { $('#pageSetupModal').hidden = true; });
+    $('#btnPageSetupCancel')?.addEventListener('click', () => { $('#pageSetupModal').hidden = true; });
+    $('#btnPageSetupOk')?.addEventListener('click', applyPageSetupModal);
+    $('#btnOpenStyles')?.addEventListener('click', openStyleDesignerModal);
+    $('#btnCloseStyleModal')?.addEventListener('click', () => { $('#styleDesignerModal').hidden = true; });
+    $('#btnStyleOk')?.addEventListener('click', () => { $('#styleDesignerModal').hidden = true; });
+    $('#btnStyleApplySel')?.addEventListener('click', applyActiveStyleToSelected);
+    $('#btnStyleAddNew')?.addEventListener('click', () => {
+      if (!state.report) return;
+      pushUndo();
+      if (!Array.isArray(state.report.styles)) state.report.styles = [];
+      const ns = { id: uid(), name: `Stil${state.report.styles.length + 1}`, fontFamily: 'Segoe UI, Inter, sans-serif', fontSizePt: 10, bold: false, italic: false, color: '#111827', backgroundColor: 'transparent', borderColor: '#cbd5e1', borderWidthPx: 0, borderStyle: 'Solid', borderSides: 'All' };
+      state.report.styles.push(ns);
+      _activeStyleId = ns.id;
+      renderStyleDesigner();
+    });
+    $('#btnStyleAddPresets')?.addEventListener('click', () => {
+      if (!state.report) return;
+      pushUndo();
+      if (!Array.isArray(state.report.styles)) state.report.styles = [];
+      const presets = [
+        { id: uid(), name: 'Kurumsal Başlık', fontFamily: 'Segoe UI, Inter, sans-serif', fontSizePt: 14, bold: true, italic: false, color: '#0f172a', backgroundColor: 'transparent', borderColor: '#cbd5e1', borderWidthPx: 0, borderStyle: 'Solid', borderSides: 'All' },
+        { id: uid(), name: 'Tablo Başlığı', fontFamily: 'Segoe UI, Inter, sans-serif', fontSizePt: 9.5, bold: true, italic: false, color: '#ffffff', backgroundColor: '#1e3a8a', borderColor: '#1e3a8a', borderWidthPx: 1, borderStyle: 'Solid', borderSides: 'All' },
+        { id: uid(), name: 'Zebra Satır', fontFamily: 'Segoe UI, Inter, sans-serif', fontSizePt: 9, bold: false, italic: false, color: '#111827', backgroundColor: '#f1f5f9', borderColor: '#cbd5e1', borderWidthPx: 1, borderStyle: 'Solid', borderSides: 'All' },
+        { id: uid(), name: 'Toplam Satırı', fontFamily: 'Segoe UI, Inter, sans-serif', fontSizePt: 10, bold: true, italic: false, color: '#0f172a', backgroundColor: '#e0f2fe', borderColor: '#0284c7', borderWidthPx: 1, borderStyle: 'Solid', borderSides: 'All' }
+      ];
+      state.report.styles.push(...presets);
+      _activeStyleId = presets[0].id;
+      renderStyleDesigner();
+    });
+    const syncPsSize = () => {
+      const dims = { A4: [210, 297], A5: [148, 210], Letter: [216, 279] }[$('#psPaperSize').value];
+      if (dims) {
+        const land = $('#psOrientation').value === 'Landscape';
+        $('#psWidthMm').value = land ? dims[1] : dims[0];
+        $('#psHeightMm').value = land ? dims[0] : dims[1];
+      }
+      updatePageSetupPreviews();
+    };
+    $('#psPaperSize')?.addEventListener('change', syncPsSize);
+    $('#psOrientation')?.addEventListener('change', syncPsSize);
+    $$('#pageSetupModal [data-pstab]').forEach(b => { b.onclick = () => setPageSetupTab(b.dataset.pstab); });
+    ['#psMarginTop', '#psMarginRight', '#psMarginBottom', '#psMarginLeft', '#psWmEnabled', '#psWmText', '#psWmSize', '#psWmAngle', '#psWmOpacity']
+      .forEach(sel => $(sel)?.addEventListener('input', updatePageSetupPreviews));
+    $('#psWmEnabled')?.addEventListener('change', updatePageSetupPreviews);
+    $('#psWmColorBtn')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openColorPopover(e.currentTarget, $('#psWmColor').value || '#cbd5e1', false, (c) => {
+        $('#psWmColor').value = c;
+        updatePageSetupPreviews();
+      });
+    });
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', bootDesigner);
+  } else {
+    bootDesigner();
   }
 })();

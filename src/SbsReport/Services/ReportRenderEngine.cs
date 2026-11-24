@@ -46,6 +46,7 @@ public class RenderedElement
     public string HAlign { get; set; } = "left";
     public string VAlign { get; set; } = "middle";
     public bool WordWrap { get; set; } = true;
+    public bool AllowHtmlTags { get; set; }
     public double Angle { get; set; }
     public double PaddingLeftMm { get; set; }
     public double PaddingTopMm { get; set; }
@@ -61,11 +62,14 @@ public class RenderedElement
     public bool ReadOnly { get; set; }
     public bool Required { get; set; }
     public string? ImageUrl { get; set; }
+    public string ImageFit { get; set; } = "Contain";
     public string? ShapeType { get; set; }
     public string? LineOrientation { get; set; }
     public string BarcodeFormat { get; set; } = "Code128";
     public string? ChartType { get; set; }
     public List<ChartPoint>? ChartData { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string? PrintOn { get; set; }
 }
 
 public class ChartPoint
@@ -84,6 +88,16 @@ public partial class ReportRenderEngine
 
     [GeneratedRegex(@"^(Sum|Avg|Min|Max|Count)\s*\(([^)]*)\)$", RegexOptions.IgnoreCase)]
     private static partial Regex AggRegex();
+
+    [GeneratedRegex(@"<(?:br\s*/?|/?(?:b|strong|i|em|u|color(?:\s*=\s*[""']?#[0-9a-fA-F]{3,8}[""']?)?))>", RegexOptions.IgnoreCase)]
+    private static partial Regex InlineHtmlTagRegex();
+
+    public static string StripInlineHtmlTags(string? text)
+    {
+        if (string.IsNullOrEmpty(text) || !text.Contains('<')) return text ?? string.Empty;
+        var withBreaks = Regex.Replace(text, @"<br\s*/?>", "\n", RegexOptions.IgnoreCase);
+        return InlineHtmlTagRegex().Replace(withBreaks, string.Empty);
+    }
 
     public ReportRenderEngine(DemoDataService dataService)
     {
@@ -174,14 +188,7 @@ public partial class ReportRenderEngine
             }
 
             var totalCombined = combinedPages.Count;
-            foreach (var p in combinedPages)
-            {
-                foreach (var el in p.Elements)
-                {
-                    if (el.Text.Contains("__TOTAL_PAGES__", StringComparison.Ordinal))
-                        el.Text = el.Text.Replace("__TOTAL_PAGES__", totalCombined.ToString(CultureInfo.InvariantCulture));
-                }
-            }
+            FinalizePages(combinedPages, totalCombined);
 
             sw.Stop();
             var effWm = (firstPageSettings.Watermark?.Enabled == true)
@@ -199,18 +206,47 @@ public partial class ReportRenderEngine
         }
 
         var single = RenderSingleSection(report, runtimeData, directTables, masterReport, 0);
-        var totalSingle = single.Pages.Count;
-        foreach (var p in single.Pages)
-        {
-            foreach (var el in p.Elements)
-            {
-                if (el.Text.Contains("__TOTAL_PAGES__", StringComparison.Ordinal))
-                    el.Text = el.Text.Replace("__TOTAL_PAGES__", totalSingle.ToString(CultureInfo.InvariantCulture));
-            }
-        }
+        FinalizePages(single.Pages, single.Pages.Count);
         sw.Stop();
         single.RenderTimeMs = Math.Round(sw.Elapsed.TotalMilliseconds, 2);
         return single;
+    }
+
+    private static void FinalizePages(List<RenderedPage> pages, int totalPages)
+    {
+        var totalStr = totalPages.ToString(CultureInfo.InvariantCulture);
+        for (int i = 0; i < pages.Count; i++)
+        {
+            var p = pages[i];
+            bool isFirst = (i == 0);
+            bool isLast = (i == pages.Count - 1);
+            for (int e = p.Elements.Count - 1; e >= 0; e--)
+            {
+                var el = p.Elements[e];
+                if (!ShouldPrintOn(el.PrintOn, isFirst, isLast))
+                {
+                    p.Elements.RemoveAt(e);
+                    continue;
+                }
+                if (el.Text.Contains("__TOTAL_PAGES__", StringComparison.Ordinal))
+                    el.Text = el.Text.Replace("__TOTAL_PAGES__", totalStr);
+            }
+        }
+    }
+
+    private static bool ShouldPrintOn(string? printOn, bool isFirst, bool isLast)
+    {
+        if (string.IsNullOrEmpty(printOn) || printOn.Equals("AllPages", StringComparison.OrdinalIgnoreCase))
+            return true;
+        return printOn switch
+        {
+            "ExceptFirstPage" => !isFirst,
+            "ExceptLastPage" => !isLast,
+            "OnlyFirstPage" => isFirst,
+            "OnlyLastPage" => isLast,
+            "ExceptFirstAndLastPage" => !isFirst && !isLast,
+            _ => true
+        };
     }
 
     private List<Dictionary<string, object?>> ResolveRowsFast(
@@ -224,16 +260,58 @@ public partial class ReportRenderEngine
             if (!string.IsNullOrWhiteSpace(dataSourceName))
             {
                 if (directTables.TryGetValue(dataSourceName, out var exact))
+                {
+                    ApplyCalculatedColumns(report, dataSourceName, exact);
                     return exact;
+                }
                 var norm = ExpressionEvaluator.NormalizeTurkishKey(dataSourceName);
                 foreach (var kv in directTables)
                     if (ExpressionEvaluator.NormalizeTurkishKey(kv.Key) == norm)
+                    {
+                        ApplyCalculatedColumns(report, dataSourceName, kv.Value);
                         return kv.Value;
+                    }
             }
             if (directTables.Count == 1)
-                return directTables.Values.First();
+            {
+                var singleTable = directTables.Values.First();
+                ApplyCalculatedColumns(report, dataSourceName ?? directTables.Keys.First(), singleTable);
+                return singleTable;
+            }
         }
-        return _dataService.ResolveRows(report, dataSourceName, runtimeData);
+        var resolved = _dataService.ResolveRows(report, dataSourceName, runtimeData);
+        ApplyCalculatedColumns(report, dataSourceName, resolved);
+        return resolved;
+    }
+
+    private static void ApplyCalculatedColumns(
+        SbsReportDocument report,
+        string? dataSourceName,
+        List<Dictionary<string, object?>> rows)
+    {
+        if (rows.Count == 0 || report.DataSources is not { Count: > 0 }) return;
+        var ds = !string.IsNullOrWhiteSpace(dataSourceName)
+            ? report.DataSources.FirstOrDefault(d =>
+                string.Equals(d.Name, dataSourceName, StringComparison.OrdinalIgnoreCase) ||
+                ExpressionEvaluator.NormalizeTurkishKey(d.Name) == ExpressionEvaluator.NormalizeTurkishKey(dataSourceName))
+            : report.DataSources.FirstOrDefault();
+        if (ds?.Columns is not { Count: > 0 }) return;
+
+        var calcCols = ds.Columns.Where(c => c.IsCalculated && !string.IsNullOrWhiteSpace(c.Expression) && !string.IsNullOrWhiteSpace(c.Name)).ToList();
+        if (calcCols.Count == 0) return;
+
+        for (int i = 0; i < rows.Count; i++)
+        {
+            var row = rows[i];
+            var ctx = new EvalContext { Report = report, Row = row, AllRows = rows, LineNumber = i + 1, PageNumber = 1 };
+            foreach (var col in calcCols)
+            {
+                var expr = col.Expression!.Trim();
+                if (expr.StartsWith('{') && expr.EndsWith('}'))
+                    expr = expr[1..^1].Trim();
+                row[col.Name] = ExpressionEvaluator.EvaluateExpression(expr, ctx);
+            }
+        }
     }
 
     private RenderedReport RenderSingleSection(
@@ -250,36 +328,39 @@ public partial class ReportRenderEngine
 
         // If a Master Report is assigned, PageHeader & PageFooter come fixed from Master (respecting InheritMasterHeader/Footer)!
         var masterPageHeaders = (masterReport != null && report.InheritMasterHeader)
-            ? masterReport.Bands.Where(b => b.Type == "PageHeader").ToList()
+            ? masterReport.Bands.Where(b => b.Enabled && b.Type == "PageHeader").ToList()
             : new List<SbsBand>();
         var masterPageFooters = (masterReport != null && report.InheritMasterFooter)
-            ? masterReport.Bands.Where(b => b.Type == "PageFooter").ToList()
+            ? masterReport.Bands.Where(b => b.Enabled && b.Type == "PageFooter").ToList()
             : new List<SbsBand>();
-        var masterOverlays = masterReport?.Bands.Where(b => b.Type == "Overlay").ToList() ?? new();
+        var masterOverlays = masterReport?.Bands.Where(b => b.Enabled && b.Type is "Overlay" or "OverlayBand").ToList() ?? new();
 
-        var reportTitleBands = report.Bands.Where(b => b.Type == "ReportTitle").ToList();
+        var reportTitleBands = report.Bands.Where(b => b.Enabled && b.Type == "ReportTitle").ToList();
         var pageHeaderBands = masterPageHeaders.Count > 0
             ? masterPageHeaders
-            : report.Bands.Where(b => b.Type == "PageHeader").ToList();
-        var headerBands = report.Bands.Where(b => b.Type is "Header" or "ColumnHeader").ToList();
-        var groupHeaderBands = report.Bands.Where(b => b.Type == "GroupHeader").ToList();
-        var dataBands = report.Bands.Where(b => b.Type is "Data" or "Table" or "HierarchicalData" or "ChildBand").ToList();
-        var groupFooterBands = report.Bands.Where(b => b.Type == "GroupFooter").ToList();
-        var footerBands = report.Bands.Where(b => b.Type is "Footer" or "ColumnFooter" or "EmptyBand").ToList();
+            : report.Bands.Where(b => b.Enabled && b.Type == "PageHeader").ToList();
+        var headerBands = report.Bands.Where(b => b.Enabled && b.Type is "Header" or "ColumnHeader").ToList();
+        var groupHeaderBands = report.Bands.Where(b => b.Enabled && b.Type == "GroupHeader").ToList();
+        var dataBands = report.Bands.Where(b => b.Enabled && b.Type is "Data" or "Table" or "HierarchicalData" or "ChildBand").ToList();
+        var groupFooterBands = report.Bands.Where(b => b.Enabled && b.Type == "GroupFooter").ToList();
+        var emptyBands = report.Bands.Where(b => b.Enabled && b.Type == "EmptyBand").ToList();
+        var footerBands = report.Bands.Where(b => b.Enabled && b.Type is "Footer" or "ColumnFooter").ToList();
         var pageFooterBands = masterPageFooters.Count > 0
             ? masterPageFooters
-            : report.Bands.Where(b => b.Type == "PageFooter").ToList();
-        var summaryBands = report.Bands.Where(b => b.Type == "ReportSummary").ToList();
-        var overlayBands = masterOverlays.Concat(report.Bands.Where(b => b.Type == "Overlay")).ToList();
+            : report.Bands.Where(b => b.Enabled && b.Type == "PageFooter").ToList();
+        var summaryBands = report.Bands.Where(b => b.Enabled && b.Type == "ReportSummary").ToList();
+        var overlayBands = masterOverlays.Concat(report.Bands.Where(b => b.Enabled && b.Type is "Overlay" or "OverlayBand")).ToList();
 
         var pageFooterHeight = pageFooterBands.Sum(b => b.HeightMm);
         var maxBodyY = contentBottom - pageFooterHeight;
 
         var pages = new List<RenderedPage>();
-        var currentPage = new RenderedPage { PageNumber = pageNumberOffset + 1 };
+        int displayPageNumber = pageNumberOffset + 1;
+        var currentPage = new RenderedPage { PageNumber = displayPageNumber };
         pages.Add(currentPage);
 
         double cursorY = contentTop;
+        var dupTracker = new Dictionary<string, (string LastText, RenderedElement? LastEl, int PageIdx)>(StringComparer.Ordinal);
 
         void PlacePageHeader(RenderedPage targetPage, ref double y)
         {
@@ -300,10 +381,12 @@ public partial class ReportRenderEngine
             }
         }
 
-        void NewPage()
+        void NewPage(bool resetPageNo = false)
         {
-            currentPage = new RenderedPage { PageNumber = pageNumberOffset + pages.Count + 1 };
+            displayPageNumber = resetPageNo ? 1 : (displayPageNumber + 1);
+            currentPage = new RenderedPage { PageNumber = displayPageNumber };
             pages.Add(currentPage);
+            dupTracker.Clear();
             cursorY = contentTop;
             PlacePageHeader(currentPage, ref cursorY);
         }
@@ -390,24 +473,31 @@ public partial class ReportRenderEngine
                 foreach (var grp in groups)
                 {
                     var grpRows = grp.ToList();
-                    if (grpIdx > 0 && groupHeaderBands.Any(g => g.NewPageBefore))
-                        NewPage();
+                    bool shouldResetPage = grpIdx > 0 && groupHeaderBands.Any(g => g.ResetPageNumber);
+                    if (shouldResetPage || (grpIdx > 0 && groupHeaderBands.Any(g => g.NewPageBefore)))
+                        NewPage(shouldResetPage);
 
+                    dupTracker.Clear();
                     foreach (var gh in groupHeaderBands)
                     {
                         var ghH = MeasureBandHeight(gh, report, grpRows[0], grpRows, 0, currentPage.PageNumber);
-                        if (cursorY + ghH > maxBodyY) NewPage();
+                        var firstRowH = (gh.KeepGroupTogether && grpRows.Count > 0)
+                            ? MeasureBandHeight(dataBand, report, grpRows[0], grpRows, 1, currentPage.PageNumber)
+                            : 0;
+                        if (cursorY + ghH + firstRowH > maxBodyY) NewPage();
                         AddBandElements(currentPage, gh, contentLeft, cursorY, report, grpRows[0], grpRows, 0, currentPage.PageNumber, 0, ghH);
                         cursorY += ghH;
                         if (gh.NewPageAfter) NewPage();
                     }
 
+                    int grpLine = 0;
                     foreach (var row in grpRows)
                     {
                         lineNo++;
-                        var rowH = MeasureBandHeight(dataBand, report, row, grpRows, lineNo, currentPage.PageNumber);
+                        grpLine++;
+                        var rowH = MeasureBandHeight(dataBand, report, row, grpRows, grpLine, currentPage.PageNumber);
                         if (cursorY + rowH > maxBodyY) NewPage();
-                        AddBandElements(currentPage, dataBand, contentLeft, cursorY, report, row, grpRows, lineNo, currentPage.PageNumber, 0, rowH);
+                        AddBandElements(currentPage, dataBand, contentLeft, cursorY, report, row, grpRows, grpLine, currentPage.PageNumber, 0, rowH, lineNo, dupTracker, pages.Count);
                         cursorY += rowH;
                         if (dataBand.NewPageAfter) NewPage();
                     }
@@ -434,12 +524,49 @@ public partial class ReportRenderEngine
                     var indentMm = level * Math.Max(0, dataBand.IndentMm);
                     var rowH = MeasureBandHeight(dataBand, report, row, rows, i + 1, currentPage.PageNumber);
                     if (cursorY + rowH > maxBodyY) NewPage();
-                    AddBandElements(currentPage, dataBand, contentLeft, cursorY, report, row, rows, i + 1, currentPage.PageNumber, indentMm, rowH);
+                    AddBandElements(currentPage, dataBand, contentLeft, cursorY, report, row, rows, i + 1, currentPage.PageNumber, indentMm, rowH, i + 1, dupTracker, pages.Count);
+                    cursorY += rowH;
+                }
+            }
+            else if (dataBand.Columns > 1)
+            {
+                dupTracker.Clear();
+                int cols = Math.Clamp(dataBand.Columns, 1, 12);
+                double gap = Math.Max(0, dataBand.ColumnGapsMm);
+                double printableW = page.WidthMm - page.MarginLeftMm - page.MarginRightMm;
+                double colW = (printableW - (cols - 1) * gap) / cols;
+
+                for (int i = 0; i < rows.Count; i += cols)
+                {
+                    double rowH = dataBand.HeightMm;
+                    int sliceCount = Math.Min(cols, rows.Count - i);
+                    for (int c = 0; c < sliceCount; c++)
+                    {
+                        var h = MeasureBandHeight(dataBand, report, rows[i + c], rows, i + c + 1, currentPage.PageNumber);
+                        if (h > rowH) rowH = h;
+                    }
+
+                    if (cursorY + rowH > maxBodyY)
+                    {
+                        NewPage();
+                        foreach (var hb in headerBands.Where(h => h.PrintOnAllPages))
+                        {
+                            AddBandElements(currentPage, hb, contentLeft, cursorY, report, null, rows, 0, currentPage.PageNumber);
+                            cursorY += hb.HeightMm;
+                        }
+                    }
+
+                    for (int c = 0; c < sliceCount; c++)
+                    {
+                        double colX = contentLeft + c * (colW + gap);
+                        AddBandElements(currentPage, dataBand, colX, cursorY, report, rows[i + c], rows, i + c + 1, currentPage.PageNumber, 0, rowH, i + c + 1, null, pages.Count);
+                    }
                     cursorY += rowH;
                 }
             }
             else
             {
+                dupTracker.Clear();
                 for (int i = 0; i < rows.Count; i++)
                 {
                     if (i > 0 && dataBand.NewPageBefore) NewPage();
@@ -454,25 +581,54 @@ public partial class ReportRenderEngine
                         }
                     }
 
-                    AddBandElements(currentPage, dataBand, contentLeft, cursorY, report, rows[i], rows, i + 1, currentPage.PageNumber, 0, rowH);
+                    AddBandElements(currentPage, dataBand, contentLeft, cursorY, report, rows[i], rows, i + 1, currentPage.PageNumber, 0, rowH, i + 1, dupTracker, pages.Count);
                     cursorY += rowH;
                     if (dataBand.NewPageAfter && i < rows.Count - 1) NewPage();
                 }
             }
         }
 
-        // Footer bands
-        foreach (var band in footerBands)
+        // EmptyBand: fill remaining space before bottom-aligned footers / summary
+        var trailingFootersH = footerBands.Sum(b => b.HeightMm) + summaryBands.Sum(b => b.HeightMm);
+        foreach (var eb in emptyBands)
         {
+            if (eb.HeightMm <= 0.5) continue;
+            var fillLimit = Math.Max(cursorY, maxBodyY - trailingFootersH);
+            int emptyRowIdx = 0;
+            while (cursorY + eb.HeightMm <= fillLimit + 0.01 && emptyRowIdx < 200)
+            {
+                emptyRowIdx++;
+                AddBandElements(currentPage, eb, contentLeft, cursorY, report, null, primaryRows, emptyRowIdx, currentPage.PageNumber);
+                cursorY += eb.HeightMm;
+            }
+        }
+
+        // Footer bands (with PrintAtBottom support)
+        for (int fi = 0; fi < footerBands.Count; fi++)
+        {
+            var band = footerBands[fi];
             if (cursorY + band.HeightMm > maxBodyY) NewPage();
+            if (band.PrintAtBottom)
+            {
+                var remH = footerBands.Skip(fi).Sum(b => b.HeightMm) + summaryBands.Where(s => s.PrintAtBottom).Sum(s => s.HeightMm);
+                var bottomY = maxBodyY - remH;
+                if (bottomY > cursorY) cursorY = bottomY;
+            }
             AddBandElements(currentPage, band, contentLeft, cursorY, report, null, primaryRows, 0, currentPage.PageNumber);
             cursorY += band.HeightMm;
         }
 
-        // ReportSummary bands
-        foreach (var band in summaryBands)
+        // ReportSummary bands (with PrintAtBottom & NewPageBefore support)
+        for (int si = 0; si < summaryBands.Count; si++)
         {
-            if (cursorY + band.HeightMm > maxBodyY) NewPage();
+            var band = summaryBands[si];
+            if (band.NewPageBefore || cursorY + band.HeightMm > maxBodyY) NewPage();
+            if (band.PrintAtBottom)
+            {
+                var remH = summaryBands.Skip(si).Sum(b => b.HeightMm);
+                var bottomY = maxBodyY - remH;
+                if (bottomY > cursorY) cursorY = bottomY;
+            }
             AddBandElements(currentPage, band, contentLeft, cursorY, report, null, primaryRows, 0, currentPage.PageNumber);
             cursorY += band.HeightMm;
         }
@@ -599,9 +755,14 @@ public partial class ReportRenderEngine
         int lineNumber,
         int pageNumber,
         double indentMm = 0,
-        double? resolvedBandHeightMm = null)
+        double? resolvedBandHeightMm = null,
+        int lineThrough = 0,
+        Dictionary<string, (string LastText, RenderedElement? LastEl, int PageIdx)>? dupTracker = null,
+        int currentPageIdx = 0)
     {
+        if (!band.Enabled) return;
         var effectiveBandH = resolvedBandHeightMm ?? band.HeightMm;
+        var bandPrintOn = string.IsNullOrWhiteSpace(band.PrintOn) ? "AllPages" : band.PrintOn;
         var bandBg = (lineNumber > 0 && lineNumber % 2 == 0 && !string.IsNullOrWhiteSpace(band.EvenBackgroundColor))
             ? band.EvenBackgroundColor
             : band.BackgroundColor;
@@ -619,7 +780,8 @@ public partial class ReportRenderEngine
                 WidthMm = printableWidth,
                 HeightMm = effectiveBandH,
                 BackgroundColor = bandBg,
-                BorderWidthPx = 0
+                BorderWidthPx = 0,
+                PrintOn = bandPrintOn
             });
         }
 
@@ -629,14 +791,21 @@ public partial class ReportRenderEngine
             Row = row,
             AllRows = allRows,
             LineNumber = lineNumber,
+            GroupLine = lineNumber,
+            LineThrough = lineThrough > 0 ? lineThrough : lineNumber,
             PageNumber = pageNumber
         };
 
         foreach (var comp in band.Components)
         {
+            if (!comp.Enabled || !comp.Printable) continue;
+
             var color = comp.Color;
             var bg = comp.BackgroundColor;
             var bold = comp.Bold;
+            var italic = comp.Italic;
+            var underline = comp.Underline;
+            var borderColor = comp.BorderColor;
             bool visible = true;
 
             if (comp.Conditions is { Count: > 0 })
@@ -649,11 +818,18 @@ public partial class ReportRenderEngine
                         if (!string.IsNullOrWhiteSpace(cond.TextColor)) color = cond.TextColor;
                         if (!string.IsNullOrWhiteSpace(cond.BackgroundColor)) bg = cond.BackgroundColor;
                         if (cond.Bold.HasValue) bold = cond.Bold.Value;
+                        if (cond.Italic.HasValue) italic = cond.Italic.Value;
+                        if (cond.Underline.HasValue) underline = cond.Underline.Value;
+                        if (!string.IsNullOrWhiteSpace(cond.BorderColor)) borderColor = cond.BorderColor;
                     }
                 }
             }
 
             if (!visible) continue;
+
+            var effectivePrintOn = (!string.IsNullOrWhiteSpace(comp.PrintOn) && !comp.PrintOn.Equals("AllPages", StringComparison.OrdinalIgnoreCase))
+                ? comp.PrintOn
+                : bandPrintOn;
 
             // Real Table Component cell matrix expansion (renders identically in Preview, PDF, Excel, Word, HTML, CSV!)
             if (comp.Type == "Table" && !string.IsNullOrWhiteSpace(comp.TableColumnsJson))
@@ -718,6 +894,66 @@ public partial class ReportRenderEngine
 
             var evaluated = ExpressionEvaluator.EvaluateTemplate(comp.Text, comp.Format, evalCtx);
             var labelEvaluated = string.IsNullOrEmpty(comp.Label) ? null : ExpressionEvaluator.EvaluateTemplate(comp.Label, null, evalCtx);
+
+            // HideZeros (Sakla Sıfırlar): hide 0 / 0,00 / 0.00 / 0 ₺ values cleanly
+            if (comp.HideZeros && !string.IsNullOrWhiteSpace(evaluated))
+            {
+                var cleanedZero = evaluated.Trim().Replace("₺", "").Replace("TL", "", StringComparison.OrdinalIgnoreCase).Replace("€", "").Replace("$", "").Replace("%", "").Trim();
+                if ((decimal.TryParse(cleanedZero, NumberStyles.Number, TrCulture, out var zv) ||
+                     decimal.TryParse(cleanedZero, NumberStyles.Number, CultureInfo.InvariantCulture, out zv)) && zv == 0m)
+                {
+                    evaluated = string.Empty;
+                }
+            }
+
+            // MaxNumberOfLines (Maksimum Satır Sayısı)
+            if (comp.MaxNumberOfLines > 0 && !string.IsNullOrEmpty(evaluated))
+            {
+                var splitLines = evaluated.Replace("\r", "").Split('\n');
+                if (splitLines.Length > comp.MaxNumberOfLines)
+                    evaluated = string.Join("\n", splitLines.Take(comp.MaxNumberOfLines));
+            }
+
+            // TextInCells (TC Kimlik No / IBAN / Vergi No karakter kutucukları — Preview, PDF, HTML, Word, SVG birebir!)
+            if (comp.Type == "TextInCells")
+            {
+                double cellW = Math.Max(2.5, comp.CellWidthMm > 0 ? comp.CellWidthMm : 5);
+                double cellGap = Math.Max(0, comp.CellGapMm);
+                double availW = Math.Max(cellW, comp.WidthMm - indentMm);
+                int boxCount = comp.CellCount > 0
+                    ? Math.Clamp(comp.CellCount, 1, 64)
+                    : Math.Max(1, (int)Math.Floor((availW + cellGap) / (cellW + cellGap)));
+                var chars = evaluated ?? string.Empty;
+                for (int ci = 0; ci < boxCount; ci++)
+                {
+                    page.Elements.Add(new RenderedElement
+                    {
+                        Type = "Text",
+                        XMm = offsetXMm + comp.XMm + indentMm + ci * (cellW + cellGap),
+                        YMm = offsetYMm + comp.YMm,
+                        WidthMm = cellW,
+                        HeightMm = comp.HeightMm,
+                        Text = ci < chars.Length ? chars[ci].ToString() : string.Empty,
+                        FontFamily = comp.FontFamily,
+                        FontSizePt = comp.FontSizePt,
+                        Bold = bold,
+                        Italic = italic,
+                        Underline = underline,
+                        Color = color,
+                        BackgroundColor = bg == "transparent" ? "#ffffff" : bg,
+                        BorderColor = string.IsNullOrWhiteSpace(borderColor) ? "#64748b" : borderColor,
+                        BorderWidthPx = Math.Max(1, comp.BorderWidthPx),
+                        BorderStyle = comp.BorderStyle,
+                        BorderSides = "All",
+                        CornerRadiusPx = comp.CornerRadiusPx,
+                        HAlign = "center",
+                        VAlign = "middle",
+                        WordWrap = false,
+                        PrintOn = effectivePrintOn
+                    });
+                }
+                continue;
+            }
             List<ChartPoint>? chartData = null;
             if (comp.Type == "Chart" && allRows != null && !string.IsNullOrWhiteSpace(comp.CategoryField) && !string.IsNullOrWhiteSpace(comp.ValueField))
             {
@@ -733,24 +969,66 @@ public partial class ReportRenderEngine
                     .ToList();
             }
 
-            var compH = (comp.CanGrow || band.CanGrow) ? Math.Max(comp.HeightMm, effectiveBandH - comp.YMm) : comp.HeightMm;
-            page.Elements.Add(new RenderedElement
+            var compH = (comp.CanGrow || comp.GrowToHeight || band.CanGrow) ? Math.Max(comp.HeightMm, effectiveBandH - comp.YMm) : comp.HeightMm;
+            var compW = Math.Max(2, comp.WidthMm - indentMm);
+
+            // ProcessingDuplicates (None | Hide | Merge)
+            var dupMode = comp.ProcessingDuplicates ?? "None";
+            if (dupTracker != null && !dupMode.Equals("None", StringComparison.OrdinalIgnoreCase) && comp.Type is "Text" or "RichText" or "SystemText")
+            {
+                if (dupTracker.TryGetValue(comp.Id, out var prev) &&
+                    prev.PageIdx == currentPageIdx &&
+                    string.Equals(prev.LastText, evaluated, StringComparison.Ordinal))
+                {
+                    if (dupMode.Equals("Merge", StringComparison.OrdinalIgnoreCase) && prev.LastEl != null)
+                    {
+                        prev.LastEl.HeightMm += effectiveBandH;
+                        continue;
+                    }
+                    if (dupMode.Equals("Hide", StringComparison.OrdinalIgnoreCase))
+                    {
+                        evaluated = string.Empty;
+                    }
+                }
+            }
+
+            // ShrinkFontToFit (automatically scales FontSizePt down to ShrinkFontToFitMinPt if text overflows box)
+            var fontSizePt = comp.FontSizePt;
+            if (comp.ShrinkFontToFit && !string.IsNullOrEmpty(evaluated) && comp.Type is "Text" or "RichText" or "SystemText")
+            {
+                double minPt = Math.Max(4, comp.ShrinkFontToFitMinPt > 0 ? comp.ShrinkFontToFitMinPt : 6);
+                while (fontSizePt > minPt)
+                {
+                    double charWmm = Math.Max(0.8, fontSizePt * 0.21);
+                    int charsPerLine = Math.Max(1, (int)Math.Floor(Math.Max(2, compW - 1.5) / charWmm));
+                    int lines = 0;
+                    foreach (var rawLine in evaluated.Replace("\r", "").Split('\n'))
+                        lines += comp.WordWrap ? Math.Max(1, (int)Math.Ceiling(rawLine.Length / (double)charsPerLine)) : 1;
+                    double neededH = (lines * fontSizePt * 0.3528 * 1.25) + 0.8;
+                    double singleLineW = evaluated.Length * charWmm;
+                    bool fits = comp.WordWrap ? (neededH <= compH) : (singleLineW <= compW - 1.5 && neededH <= compH);
+                    if (fits) break;
+                    fontSizePt = Math.Max(minPt, fontSizePt - 0.5);
+                }
+            }
+
+            var renderedEl = new RenderedElement
             {
                 Type = comp.Type,
                 XMm = offsetXMm + comp.XMm + indentMm,
                 YMm = offsetYMm + comp.YMm,
-                WidthMm = Math.Max(2, comp.WidthMm - indentMm),
+                WidthMm = compW,
                 HeightMm = compH,
                 Text = evaluated,
                 FontFamily = comp.FontFamily,
-                FontSizePt = comp.FontSizePt,
+                FontSizePt = fontSizePt,
                 Bold = bold,
-                Italic = comp.Italic,
-                Underline = comp.Underline,
+                Italic = italic,
+                Underline = underline,
                 Strike = comp.Strike,
                 Color = color,
                 BackgroundColor = bg,
-                BorderColor = comp.BorderColor,
+                BorderColor = borderColor,
                 BorderWidthPx = comp.BorderWidthPx,
                 BorderStyle = comp.BorderStyle,
                 BorderSides = comp.BorderSides,
@@ -758,6 +1036,7 @@ public partial class ReportRenderEngine
                 HAlign = comp.HAlign,
                 VAlign = comp.VAlign,
                 WordWrap = comp.WordWrap,
+                AllowHtmlTags = comp.AllowHtmlTags,
                 Angle = comp.Angle,
                 PaddingLeftMm = comp.PaddingLeftMm,
                 PaddingTopMm = comp.PaddingTopMm,
@@ -773,12 +1052,21 @@ public partial class ReportRenderEngine
                 ReadOnly = comp.ReadOnly,
                 Required = comp.Required,
                 ImageUrl = comp.ImageUrl,
+                ImageFit = string.IsNullOrWhiteSpace(comp.ImageFit) ? "Contain" : comp.ImageFit,
                 ShapeType = comp.ShapeType,
                 LineOrientation = comp.LineOrientation,
                 BarcodeFormat = comp.BarcodeFormat,
                 ChartType = comp.ChartType,
-                ChartData = chartData
-            });
+                ChartData = chartData,
+                PrintOn = effectivePrintOn
+            };
+            page.Elements.Add(renderedEl);
+
+            if (dupTracker != null && !dupMode.Equals("None", StringComparison.OrdinalIgnoreCase) && comp.Type is "Text" or "RichText" or "SystemText")
+            {
+                if (!dupMode.Equals("Hide", StringComparison.OrdinalIgnoreCase) || !string.IsNullOrEmpty(evaluated))
+                    dupTracker[comp.Id] = (evaluated, renderedEl, currentPageIdx);
+            }
         }
     }
 }

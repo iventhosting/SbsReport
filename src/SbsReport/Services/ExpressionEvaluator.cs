@@ -10,6 +10,8 @@ public sealed class EvalContext
     public Dictionary<string, object?>? Row { get; init; }
     public List<Dictionary<string, object?>>? AllRows { get; init; }
     public int LineNumber { get; init; }
+    public int GroupLine { get; init; }
+    public int LineThrough { get; init; }
     public int PageNumber { get; init; }
     public int TotalPageCount { get; init; }
 }
@@ -377,8 +379,16 @@ public static class ExpressionEvaluator
         if (name.Equals("PageNumber", StringComparison.OrdinalIgnoreCase)) return ctx.PageNumber;
         if (name.Equals("TotalPageCount", StringComparison.OrdinalIgnoreCase))
             return ctx.TotalPageCount > 0 ? ctx.TotalPageCount : "__TOTAL_PAGES__";
+        if (name.Equals("PageNofM", StringComparison.OrdinalIgnoreCase))
+            return $"{ctx.PageNumber} / {(ctx.TotalPageCount > 0 ? ctx.TotalPageCount.ToString(CultureInfo.InvariantCulture) : "__TOTAL_PAGES__")}";
+        if (name.Equals("IsFirstPage", StringComparison.OrdinalIgnoreCase)) return ctx.PageNumber <= 1;
+        if (name.Equals("IsLastPage", StringComparison.OrdinalIgnoreCase))
+            return ctx.TotalPageCount > 0 && ctx.PageNumber == ctx.TotalPageCount;
         if (name.Equals("Line", StringComparison.OrdinalIgnoreCase)) return ctx.LineNumber;
+        if (name.Equals("GroupLine", StringComparison.OrdinalIgnoreCase)) return ctx.GroupLine > 0 ? ctx.GroupLine : ctx.LineNumber;
+        if (name.Equals("LineThrough", StringComparison.OrdinalIgnoreCase)) return ctx.LineThrough > 0 ? ctx.LineThrough : ctx.LineNumber;
         if (name.Equals("Today", StringComparison.OrdinalIgnoreCase)) return DateTime.Now.ToString("dd.MM.yyyy", TrCulture);
+        if (name.Equals("Time", StringComparison.OrdinalIgnoreCase)) return DateTime.Now.ToString("HH:mm:ss", TrCulture);
         if (name.Equals("Now", StringComparison.OrdinalIgnoreCase)) return DateTime.Now.ToString("dd.MM.yyyy HH:mm", TrCulture);
         if (name.Equals("ReportName", StringComparison.OrdinalIgnoreCase)) return ctx.Report.Name;
 
@@ -437,6 +447,54 @@ public static class ExpressionEvaluator
         {
             case "count":
                 return rows.Count;
+            case "runningcount":
+                return ctx.LineNumber;
+            case "countdistinct":
+            {
+                if (c.Args.Count == 0 || rows.Count == 0) return 0;
+                var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                for (int i = 0; i < rows.Count; i++)
+                {
+                    var v = EvaluateNode(c.Args[0], RowCtx(ctx, rows, i));
+                    if (v != null && !string.IsNullOrEmpty(v.ToString())) set.Add(v.ToString()!);
+                }
+                return set.Count;
+            }
+            case "first":
+                return (c.Args.Count > 0 && rows.Count > 0) ? EvaluateNode(c.Args[0], RowCtx(ctx, rows, 0)) : null;
+            case "last":
+                return (c.Args.Count > 0 && rows.Count > 0) ? EvaluateNode(c.Args[0], RowCtx(ctx, rows, rows.Count - 1)) : null;
+            case "runningsum":
+            {
+                if (c.Args.Count == 0 || rows.Count == 0) return 0m;
+                int limit = ctx.LineNumber > 0 ? Math.Min(ctx.LineNumber, rows.Count) : rows.Count;
+                decimal acc = 0m;
+                for (int i = 0; i < limit; i++)
+                    acc += ToDecimal(EvaluateNode(c.Args[0], RowCtx(ctx, rows, i)));
+                return acc;
+            }
+            case "sumdistinct":
+            {
+                if (c.Args.Count == 0 || rows.Count == 0) return 0m;
+                var seen = new HashSet<decimal>();
+                decimal acc = 0m;
+                for (int i = 0; i < rows.Count; i++)
+                {
+                    var val = ToDecimal(EvaluateNode(c.Args[0], RowCtx(ctx, rows, i)));
+                    if (seen.Add(val)) acc += val;
+                }
+                return acc;
+            }
+            case "median":
+            {
+                if (c.Args.Count == 0 || rows.Count == 0) return 0m;
+                var vals = new List<decimal>(rows.Count);
+                for (int i = 0; i < rows.Count; i++)
+                    vals.Add(ToDecimal(EvaluateNode(c.Args[0], RowCtx(ctx, rows, i))));
+                vals.Sort();
+                int mid = vals.Count / 2;
+                return vals.Count % 2 == 0 ? (vals[mid - 1] + vals[mid]) / 2m : vals[mid];
+            }
             case "sum":
             case "avg":
             case "min":
@@ -446,18 +504,7 @@ public static class ExpressionEvaluator
                 var argNode = c.Args[0];
                 var vals = new List<decimal>(rows.Count);
                 for (int i = 0; i < rows.Count; i++)
-                {
-                    var rowCtx = new EvalContext
-                    {
-                        Report = ctx.Report,
-                        Row = rows[i],
-                        AllRows = rows,
-                        LineNumber = i + 1,
-                        PageNumber = ctx.PageNumber,
-                        TotalPageCount = ctx.TotalPageCount
-                    };
-                    vals.Add(ToDecimal(EvaluateNode(argNode, rowCtx)));
-                }
+                    vals.Add(ToDecimal(EvaluateNode(argNode, RowCtx(ctx, rows, i))));
                 return fn switch
                 {
                     "sum" => vals.Sum(),
@@ -472,19 +519,214 @@ public static class ExpressionEvaluator
                 return ToBool(EvaluateNode(c.Args[0], ctx))
                     ? EvaluateNode(c.Args[1], ctx)
                     : EvaluateNode(c.Args[2], ctx);
+            case "switch":
+            {
+                for (int i = 0; i + 1 < c.Args.Count; i += 2)
+                {
+                    if (ToBool(EvaluateNode(c.Args[i], ctx)))
+                        return EvaluateNode(c.Args[i + 1], ctx);
+                }
+                return c.Args.Count % 2 == 1 ? EvaluateNode(c.Args[^1], ctx) : null;
+            }
+            case "choose":
+            {
+                if (c.Args.Count < 2) return null;
+                int idx = (int)ToDecimal(EvaluateNode(c.Args[0], ctx));
+                return (idx >= 1 && idx < c.Args.Count) ? EvaluateNode(c.Args[idx], ctx) : null;
+            }
+            case "isnull":
+                return c.Args.Count == 0 || EvaluateNode(c.Args[0], ctx) is null;
+            case "isempty":
+            {
+                var v = c.Args.Count > 0 ? EvaluateNode(c.Args[0], ctx) : null;
+                return v is null || string.IsNullOrWhiteSpace(v.ToString());
+            }
             case "round":
             {
                 if (c.Args.Count == 0) return 0m;
                 var v = ToDecimal(EvaluateNode(c.Args[0], ctx));
                 var d = c.Args.Count > 1 ? (int)ToDecimal(EvaluateNode(c.Args[1], ctx)) : 2;
-                return Math.Round(v, d);
+                return Math.Round(v, Math.Clamp(d, 0, 15));
             }
             case "abs":
                 return c.Args.Count > 0 ? Math.Abs(ToDecimal(EvaluateNode(c.Args[0], ctx))) : 0m;
+            case "ceiling":
+                return c.Args.Count > 0 ? Math.Ceiling(ToDecimal(EvaluateNode(c.Args[0], ctx))) : 0m;
+            case "floor":
+                return c.Args.Count > 0 ? Math.Floor(ToDecimal(EvaluateNode(c.Args[0], ctx))) : 0m;
+            case "truncate":
+                return c.Args.Count > 0 ? Math.Truncate(ToDecimal(EvaluateNode(c.Args[0], ctx))) : 0m;
+            case "pow":
+                return c.Args.Count >= 2 ? (decimal)Math.Pow((double)ToDecimal(EvaluateNode(c.Args[0], ctx)), (double)ToDecimal(EvaluateNode(c.Args[1], ctx))) : 0m;
+            case "sqrt":
+            {
+                var v = c.Args.Count > 0 ? (double)ToDecimal(EvaluateNode(c.Args[0], ctx)) : 0;
+                return v < 0 ? 0m : (decimal)Math.Sqrt(v);
+            }
+            case "minval":
+                return c.Args.Count >= 2 ? Math.Min(ToDecimal(EvaluateNode(c.Args[0], ctx)), ToDecimal(EvaluateNode(c.Args[1], ctx))) : 0m;
+            case "maxval":
+                return c.Args.Count >= 2 ? Math.Max(ToDecimal(EvaluateNode(c.Args[0], ctx)), ToDecimal(EvaluateNode(c.Args[1], ctx))) : 0m;
             case "upper":
+            case "touppercase":
                 return c.Args.Count > 0 ? Convert.ToString(EvaluateNode(c.Args[0], ctx), TrCulture)?.ToUpper(TrCulture) : "";
             case "lower":
+            case "tolowercase":
                 return c.Args.Count > 0 ? Convert.ToString(EvaluateNode(c.Args[0], ctx), TrCulture)?.ToLower(TrCulture) : "";
+            case "propercase":
+            case "topropercase":
+            {
+                var s = c.Args.Count > 0 ? Convert.ToString(EvaluateNode(c.Args[0], ctx), TrCulture) ?? "" : "";
+                return TrCulture.TextInfo.ToTitleCase(s.ToLower(TrCulture));
+            }
+            case "trim":
+                return c.Args.Count > 0 ? (Convert.ToString(EvaluateNode(c.Args[0], ctx), TrCulture) ?? "").Trim() : "";
+            case "trimstart":
+                return c.Args.Count > 0 ? (Convert.ToString(EvaluateNode(c.Args[0], ctx), TrCulture) ?? "").TrimStart() : "";
+            case "trimend":
+                return c.Args.Count > 0 ? (Convert.ToString(EvaluateNode(c.Args[0], ctx), TrCulture) ?? "").TrimEnd() : "";
+            case "length":
+            case "len":
+                return c.Args.Count > 0 ? (Convert.ToString(EvaluateNode(c.Args[0], ctx), TrCulture) ?? "").Length : 0;
+            case "left":
+            {
+                if (c.Args.Count < 2) return "";
+                var s = Convert.ToString(EvaluateNode(c.Args[0], ctx), TrCulture) ?? "";
+                int n = Math.Max(0, (int)ToDecimal(EvaluateNode(c.Args[1], ctx)));
+                return n >= s.Length ? s : s[..n];
+            }
+            case "right":
+            {
+                if (c.Args.Count < 2) return "";
+                var s = Convert.ToString(EvaluateNode(c.Args[0], ctx), TrCulture) ?? "";
+                int n = Math.Max(0, (int)ToDecimal(EvaluateNode(c.Args[1], ctx)));
+                return n >= s.Length ? s : s[^n..];
+            }
+            case "substring":
+            case "mid":
+            {
+                if (c.Args.Count < 2) return "";
+                var s = Convert.ToString(EvaluateNode(c.Args[0], ctx), TrCulture) ?? "";
+                int start = Math.Max(0, (int)ToDecimal(EvaluateNode(c.Args[1], ctx)));
+                if (start >= s.Length) return "";
+                if (c.Args.Count >= 3)
+                {
+                    int len = Math.Max(0, (int)ToDecimal(EvaluateNode(c.Args[2], ctx)));
+                    return s.Substring(start, Math.Min(len, s.Length - start));
+                }
+                return s[start..];
+            }
+            case "replace":
+            {
+                if (c.Args.Count < 3) return "";
+                var s = Convert.ToString(EvaluateNode(c.Args[0], ctx), TrCulture) ?? "";
+                var oldV = Convert.ToString(EvaluateNode(c.Args[1], ctx), TrCulture) ?? "";
+                var newV = Convert.ToString(EvaluateNode(c.Args[2], ctx), TrCulture) ?? "";
+                return string.IsNullOrEmpty(oldV) ? s : s.Replace(oldV, newV, StringComparison.OrdinalIgnoreCase);
+            }
+            case "contains":
+            {
+                if (c.Args.Count < 2) return false;
+                var s = Convert.ToString(EvaluateNode(c.Args[0], ctx), TrCulture) ?? "";
+                var sub = Convert.ToString(EvaluateNode(c.Args[1], ctx), TrCulture) ?? "";
+                return s.Contains(sub, StringComparison.OrdinalIgnoreCase);
+            }
+            case "startswith":
+            {
+                if (c.Args.Count < 2) return false;
+                var s = Convert.ToString(EvaluateNode(c.Args[0], ctx), TrCulture) ?? "";
+                var sub = Convert.ToString(EvaluateNode(c.Args[1], ctx), TrCulture) ?? "";
+                return s.StartsWith(sub, StringComparison.OrdinalIgnoreCase);
+            }
+            case "endswith":
+            {
+                if (c.Args.Count < 2) return false;
+                var s = Convert.ToString(EvaluateNode(c.Args[0], ctx), TrCulture) ?? "";
+                var sub = Convert.ToString(EvaluateNode(c.Args[1], ctx), TrCulture) ?? "";
+                return s.EndsWith(sub, StringComparison.OrdinalIgnoreCase);
+            }
+            case "padleft":
+            {
+                if (c.Args.Count < 2) return "";
+                var s = Convert.ToString(EvaluateNode(c.Args[0], ctx), TrCulture) ?? "";
+                int w = (int)ToDecimal(EvaluateNode(c.Args[1], ctx));
+                char ch = c.Args.Count >= 3 && (Convert.ToString(EvaluateNode(c.Args[2], ctx), TrCulture) ?? " ").Length > 0
+                    ? (Convert.ToString(EvaluateNode(c.Args[2], ctx), TrCulture) ?? " ")[0]
+                    : '0';
+                return s.PadLeft(w, ch);
+            }
+            case "padright":
+            {
+                if (c.Args.Count < 2) return "";
+                var s = Convert.ToString(EvaluateNode(c.Args[0], ctx), TrCulture) ?? "";
+                int w = (int)ToDecimal(EvaluateNode(c.Args[1], ctx));
+                char ch = c.Args.Count >= 3 && (Convert.ToString(EvaluateNode(c.Args[2], ctx), TrCulture) ?? " ").Length > 0
+                    ? (Convert.ToString(EvaluateNode(c.Args[2], ctx), TrCulture) ?? " ")[0]
+                    : ' ';
+                return s.PadRight(w, ch);
+            }
+            case "isnumeric":
+            {
+                var v = c.Args.Count > 0 ? EvaluateNode(c.Args[0], ctx) : null;
+                if (v is null) return false;
+                if (IsNumeric(v)) return true;
+                var s = v.ToString();
+                return decimal.TryParse(s, NumberStyles.Any, CultureInfo.InvariantCulture, out _) ||
+                       decimal.TryParse(s, NumberStyles.Any, TrCulture, out _);
+            }
+            case "towordstr":
+            case "towords":
+                return c.Args.Count > 0 ? NumberToWordsTr((long)Math.Truncate(ToDecimal(EvaluateNode(c.Args[0], ctx)))) : "";
+            case "tocurrencywordstr":
+            case "tocurrencywords":
+            {
+                if (c.Args.Count == 0) return "";
+                var amt = ToDecimal(EvaluateNode(c.Args[0], ctx));
+                var mainUnit = c.Args.Count > 1 ? Convert.ToString(EvaluateNode(c.Args[1], ctx), TrCulture) ?? "Türk Lirası" : "Türk Lirası";
+                var subUnit = c.Args.Count > 2 ? Convert.ToString(EvaluateNode(c.Args[2], ctx), TrCulture) ?? "Kuruş" : "Kuruş";
+                return CurrencyToWordsTr(amt, mainUnit, subUnit);
+            }
+            case "year":
+                return TryToDate(c.Args.Count > 0 ? EvaluateNode(c.Args[0], ctx) : null, out var dy) ? dy.Year : 0;
+            case "month":
+                return TryToDate(c.Args.Count > 0 ? EvaluateNode(c.Args[0], ctx) : null, out var dm) ? dm.Month : 0;
+            case "day":
+                return TryToDate(c.Args.Count > 0 ? EvaluateNode(c.Args[0], ctx) : null, out var dd) ? dd.Day : 0;
+            case "hour":
+                return TryToDate(c.Args.Count > 0 ? EvaluateNode(c.Args[0], ctx) : null, out var dh) ? dh.Hour : 0;
+            case "minute":
+                return TryToDate(c.Args.Count > 0 ? EvaluateNode(c.Args[0], ctx) : null, out var dmi) ? dmi.Minute : 0;
+            case "monthname":
+            {
+                if (c.Args.Count == 0) return "";
+                var v = EvaluateNode(c.Args[0], ctx);
+                int m = TryToDate(v, out var dt) ? dt.Month : (int)ToDecimal(v);
+                return (m >= 1 && m <= 12) ? TrCulture.DateTimeFormat.GetMonthName(m) : "";
+            }
+            case "daysinmonth":
+            {
+                if (c.Args.Count >= 2)
+                {
+                    int y = (int)ToDecimal(EvaluateNode(c.Args[0], ctx));
+                    int m = (int)ToDecimal(EvaluateNode(c.Args[1], ctx));
+                    return (y >= 1 && m >= 1 && m <= 12) ? DateTime.DaysInMonth(y, m) : 0;
+                }
+                return TryToDate(c.Args.Count > 0 ? EvaluateNode(c.Args[0], ctx) : null, out var dt) ? DateTime.DaysInMonth(dt.Year, dt.Month) : 0;
+            }
+            case "adddays":
+            {
+                if (c.Args.Count < 2) return "";
+                if (!TryToDate(EvaluateNode(c.Args[0], ctx), out var dt)) return "";
+                int days = (int)ToDecimal(EvaluateNode(c.Args[1], ctx));
+                return dt.AddDays(days).ToString("dd.MM.yyyy", TrCulture);
+            }
+            case "datediff":
+            {
+                if (c.Args.Count < 2) return 0;
+                if (!TryToDate(EvaluateNode(c.Args[0], ctx), out var d1) || !TryToDate(EvaluateNode(c.Args[1], ctx), out var d2))
+                    return 0;
+                return (int)(d1.Date - d2.Date).TotalDays;
+            }
             case "coalesce":
                 foreach (var a in c.Args)
                 {
@@ -502,6 +744,79 @@ public static class ExpressionEvaluator
             default:
                 return null;
         }
+    }
+
+    private static EvalContext RowCtx(EvalContext ctx, List<Dictionary<string, object?>> rows, int index) => new()
+    {
+        Report = ctx.Report,
+        Row = rows[index],
+        AllRows = rows,
+        LineNumber = index + 1,
+        GroupLine = ctx.GroupLine,
+        LineThrough = ctx.LineThrough,
+        PageNumber = ctx.PageNumber,
+        TotalPageCount = ctx.TotalPageCount
+    };
+
+    private static bool TryToDate(object? v, out DateTime dt)
+    {
+        if (v is DateTime d) { dt = d; return true; }
+        if (v is DateTimeOffset dto) { dt = dto.DateTime; return true; }
+        if (v is DateOnly dOnly) { dt = dOnly.ToDateTime(TimeOnly.MinValue); return true; }
+        var s = v?.ToString();
+        if (!string.IsNullOrWhiteSpace(s) &&
+            (DateTime.TryParse(s, TrCulture, DateTimeStyles.None, out dt) ||
+             DateTime.TryParse(s, CultureInfo.InvariantCulture, DateTimeStyles.None, out dt)))
+            return true;
+        dt = default;
+        return false;
+    }
+
+    private static readonly string[] TrOnes = ["", "Bir", "İki", "Üç", "Dört", "Beş", "Altı", "Yedi", "Sekiz", "Dokuz"];
+    private static readonly string[] TrTens = ["", "On", "Yirmi", "Otuz", "Kırk", "Elli", "Altmış", "Yetmiş", "Seksen", "Doksan"];
+    private static readonly string[] TrScales = ["", "Bin", "Milyon", "Milyar", "Trilyon"];
+
+    public static string NumberToWordsTr(long number)
+    {
+        if (number == 0) return "Sıfır";
+        var negative = number < 0;
+        ulong n = negative ? (ulong)(-number) : (ulong)number;
+        var parts = new List<string>();
+        int scale = 0;
+        while (n > 0 && scale < TrScales.Length)
+        {
+            int chunk = (int)(n % 1000);
+            if (chunk > 0)
+            {
+                var chunkWords = new List<string>();
+                int h = chunk / 100;
+                int t = (chunk / 10) % 10;
+                int o = chunk % 10;
+                if (h == 1) chunkWords.Add("Yüz");
+                else if (h > 1) { chunkWords.Add(TrOnes[h]); chunkWords.Add("Yüz"); }
+                if (t > 0) chunkWords.Add(TrTens[t]);
+                if (o > 0 && !(scale == 1 && chunk == 1)) chunkWords.Add(TrOnes[o]);
+                if (scale > 0) chunkWords.Add(TrScales[scale]);
+                parts.Insert(0, string.Join(" ", chunkWords));
+            }
+            n /= 1000;
+            scale++;
+        }
+        var res = string.Join(" ", parts);
+        return negative ? "Eksi " + res : res;
+    }
+
+    public static string CurrencyToWordsTr(decimal amount, string mainUnit = "Türk Lirası", string subUnit = "Kuruş")
+    {
+        var rounded = Math.Round(Math.Abs(amount), 2, MidpointRounding.AwayFromZero);
+        long whole = (long)Math.Truncate(rounded);
+        int frac = (int)((rounded - whole) * 100m);
+        var sb = new System.Text.StringBuilder("Yalnız ");
+        if (amount < 0) sb.Append("Eksi ");
+        sb.Append(NumberToWordsTr(whole)).Append(' ').Append(mainUnit);
+        if (frac > 0)
+            sb.Append(' ').Append(NumberToWordsTr(frac)).Append(' ').Append(subUnit);
+        return sb.ToString();
     }
 
     private static int CompareValues(object? l, object? r)

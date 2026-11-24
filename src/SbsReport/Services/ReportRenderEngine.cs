@@ -331,10 +331,16 @@ public partial class ReportRenderEngine
         }
 
         // Data bands (with FilterExpression, SortBy, GroupHeader/GroupFooter, EvenBackgroundColor)
+        // Raporda veri kaynağına bağlı bir Data bandı varsa, kaynağı boş bırakılmış Data bandı o kaynağı
+        // devralmaz: statik bant gibi bir kez basılır. (Aksi halde boş bant kayıt sayısı kadar tekrar eder.)
+        // Hiçbir Data bandı bağlı değilse eski davranış korunur: boş bant rapordaki ilk veri kaynağını kullanır.
+        var anyBoundDataBand = dataBands.Any(b => !string.IsNullOrWhiteSpace(b.DataSource));
         foreach (var dataBand in dataBands)
         {
-            var dsName = !string.IsNullOrWhiteSpace(dataBand.DataSource) ? dataBand.DataSource : primaryDsName;
-            var rows = ResolveRowsFast(report, dsName, runtimeData, directTables);
+            var unbound = string.IsNullOrWhiteSpace(dataBand.DataSource) && dataBand.Type != "ChildBand";
+            var rows = unbound && anyBoundDataBand
+                ? new List<Dictionary<string, object?>>()
+                : ResolveRowsFast(report, unbound ? primaryDsName : dataBand.DataSource, runtimeData, directTables);
 
             if (!string.IsNullOrWhiteSpace(dataBand.FilterExpression))
             {

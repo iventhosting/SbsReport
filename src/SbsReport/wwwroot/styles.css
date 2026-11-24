@@ -316,9 +316,13 @@ textarea.rinput { height: auto; padding: 5px; }
 .band-box.selected .band-caption { background: var(--accent); color: var(--accent-fg); }
 .band-caption .band-ds-tag { background: var(--accent-soft); color: var(--accent); padding: 1px 5px; border-radius: 6px; font-size: 9px; }
 .band-box.selected .band-ds-tag { background: rgba(255,255,255,0.25); color: inherit; }
-.band-body { position: relative; width: 100%; overflow: visible; }
-.band-resizer { height: 5px; cursor: ns-resize; position: relative; }
-.band-resizer:hover { background: var(--accent-soft); }
+.band-body { position: relative; width: 100%; overflow: hidden; }
+.band-resizer { height: 7px; cursor: ns-resize; position: relative; margin-top: -3px; z-index: 12; }
+.band-resizer:hover, .band-box.selected > .band-resizer { background: rgba(37, 99, 235, 0.22); }
+.band-resizer:hover::after, .band-box.selected > .band-resizer::after {
+  content: ''; position: absolute; left: 50%; top: 2px; transform: translateX(-50%);
+  width: 36px; height: 3px; border-radius: 2px; background: var(--accent);
+}
 
 /* Components on Canvas */
 .comp-box {
@@ -500,6 +504,8 @@ textarea.rinput { height: auto; padding: 5px; }
 .modal-item small { color: var(--text-muted); }
 .modal-form { padding: 12px; display: flex; flex-direction: column; gap: 8px; }
 .modal-form label { display: flex; flex-direction: column; gap: 3px; color: var(--text-muted); }
+/* Onay kutulu satırlar (sihirbaz sütunları, bant seçenekleri) yan yana kalır */
+.modal-form label.sti-tree-item, .modal-form label.rfield { flex-direction: row; align-items: center; gap: 6px; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 6px; margin-top: 6px; }
 
 /* ---------- Context menu ---------- */
@@ -739,11 +745,16 @@ textarea.rinput { height: auto; padding: 5px; }
 /* =========================================================
    Bands Stacking & Color Headers
    ========================================================= */
-.band-box { position: relative; width: 100%; margin-bottom: 0px; border-bottom: 1px dashed rgba(148, 163, 184, 0.4); }
+.band-box { position: relative; width: 100%; display: block; margin-bottom: 0px; border-bottom: 1px dashed rgba(148, 163, 184, 0.4); transition: opacity 0.12s ease; }
+.band-box.band-dragging { opacity: 0.45; }
+.band-box.band-drop-before { box-shadow: 0 -3px 0 0 #2563eb; z-index: 20; }
+.band-box.band-drop-after { box-shadow: 0 3px 0 0 #2563eb; z-index: 20; }
 .band-caption {
   height: 18px; padding: 0 6px; font-size: 10px; font-weight: 700; color: #ffffff;
   display: flex; align-items: center; justify-content: space-between; user-select: none;
+  cursor: grab;
 }
+.band-caption:active { cursor: grabbing; }
 .band-caption-left { display: flex; align-items: center; gap: 6px; }
 .band-caption-actions { display: flex; align-items: center; gap: 2px; }
 .band-act-btn {

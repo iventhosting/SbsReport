@@ -292,6 +292,7 @@
     pushUndo();
     // Remove extracted PageHeader/PageFooter from child and attach Master!
     state.report.bands = state.report.bands.filter(b => b.type !== 'PageHeader' && b.type !== 'PageFooter');
+    syncActivePageToPagesArray();
     state.report.masterReportName = cleanName;
     state.report.inheritMasterHeader = true;
     state.report.inheritMasterFooter = true;
@@ -349,11 +350,13 @@
 
   function syncActivePageToPagesArray() {
     if (!state.report) return;
+    // ensureReportPages, report.page/bands'i aktif sayfadan geri yükler; yeni değerleri önce al.
+    const page = state.report.page, bands = state.report.bands;
     ensureReportPages(state.report);
     const active = state.report.pages[state.activePageIndex];
     if (active) {
-      active.page = state.report.page;
-      active.bands = state.report.bands;
+      active.page = state.report.page = page;
+      active.bands = state.report.bands = bands;
     }
   }
 
@@ -634,9 +637,47 @@
       bandBox.className = 'band-box' + (isBandSel ? ' selected' : '');
       bandBox.dataset.bandId = band.id;
 
-      // === Colored Caption with Move Up/Down/Delete ===
+      // === Colored Caption with Drag-and-Drop + Move Up/Down/Delete ===
       const caption = document.createElement('div');
       caption.className = `band-caption band-caption-${band.type}`;
+      caption.draggable = true;
+      caption.title = 'Bandı taşımak için sürükleyip bırakın';
+
+      caption.addEventListener('dragstart', (e) => {
+        state._draggingBandId = band.id;
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/sbs-band', band.id);
+        bandBox.classList.add('band-dragging');
+      });
+      caption.addEventListener('dragend', () => {
+        state._draggingBandId = null;
+        $$('.band-box').forEach(el => el.classList.remove('band-dragging', 'band-drop-before', 'band-drop-after'));
+      });
+
+      bandBox.addEventListener('dragover', (e) => {
+        if (!state._draggingBandId || state._draggingBandId === band.id) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        const rect = bandBox.getBoundingClientRect();
+        const after = (e.clientY - rect.top) > rect.height / 2;
+        bandBox.classList.toggle('band-drop-before', !after);
+        bandBox.classList.toggle('band-drop-after', after);
+      });
+      bandBox.addEventListener('dragleave', (e) => {
+        if (!bandBox.contains(e.relatedTarget)) {
+          bandBox.classList.remove('band-drop-before', 'band-drop-after');
+        }
+      });
+      bandBox.addEventListener('drop', (e) => {
+        const dragId = state._draggingBandId || e.dataTransfer.getData('text/sbs-band');
+        if (!dragId || dragId === band.id) return;
+        e.preventDefault();
+        const rect = bandBox.getBoundingClientRect();
+        const after = (e.clientY - rect.top) > rect.height / 2;
+        $$('.band-box').forEach(el => el.classList.remove('band-dragging', 'band-drop-before', 'band-drop-after'));
+        state._draggingBandId = null;
+        reorderBand(dragId, band.id, after);
+      });
 
       const captionLeft = document.createElement('div');
       captionLeft.className = 'band-caption-left';
@@ -670,6 +711,7 @@
         if (!confirm(t('confirmDeleteBand', band.name))) return;
         pushUndo();
         state.report.bands = state.report.bands.filter(b => b.id !== band.id);
+        syncActivePageToPagesArray(); // aksi halde renderAll -> ensureReportPages eski bant dizisini geri yükler
         if (state.selectedBandId === band.id) state.selectedBandId = state.report.bands[0]?.id || null;
         renderAll();
       };
@@ -697,6 +739,15 @@
         }
       };
       bandBox.appendChild(caption);
+
+      // Ensure band height always encompasses its child components so bands NEVER overlap each other
+      const maxChildBottomMm = (band.components || []).reduce((mx, c) => {
+        const b = (Number(c.yMm) || 0) + (Number(c.heightMm) || 0);
+        return b > mx ? b : mx;
+      }, 0);
+      if (maxChildBottomMm > (Number(band.heightMm) || 0)) {
+        band.heightMm = Math.round((maxChildBottomMm + 0.5) * 10) / 10;
+      }
 
       const body = document.createElement('div');
       body.className = 'band-body';
@@ -1238,12 +1289,18 @@
 
   function startBandResize(e, band) {
     e.stopPropagation();
+    pushUndo();
     const startY = e.clientY;
     const oHeight = band.heightMm;
+    const minChildH = (band.components || []).reduce((mx, c) => {
+      const b = (Number(c.yMm) || 0) + (Number(c.heightMm) || 0);
+      return b > mx ? b : mx;
+    }, 0);
+    const minH = Math.max(4, minChildH > 0 ? Math.round((minChildH + 0.5) * 10) / 10 : 4);
 
     const onMove = (ev) => {
       const dyMm = pxToMm((ev.clientY - startY) / state.zoom);
-      const nh = Math.max(4, snapMm(oHeight + dyMm));
+      const nh = Math.max(minH, snapMm(oHeight + dyMm));
       band.heightMm = nh;
       const bEl = document.querySelector(`.band-box[data-band-id="${band.id}"] .band-body`);
       if (bEl) bEl.style.height = `${mmToPx(nh)}px`;
@@ -1253,7 +1310,6 @@
     const onUp = () => {
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
-      pushUndo();
       renderAll();
     };
 
@@ -2562,7 +2618,7 @@
     setStatus(`Aktif Araç: ${tool}`);
   }
 
-  // ---------- Move Band Up / Down ----------
+  // ---------- Move / Reorder Band (Buttons + Drag-and-Drop) ----------
   function moveBand(bandId, dir) {
     const bands = state.report.bands;
     const idx = bands.findIndex(b => b.id === bandId);
@@ -2575,6 +2631,21 @@
     bands[newIdx] = tmp;
     state.selectedBandId = bandId;
     renderAll();
+  }
+
+  function reorderBand(dragBandId, targetBandId, placeAfter) {
+    const bands = state.report.bands;
+    const fromIdx = bands.findIndex(b => b.id === dragBandId);
+    const targetIdx = bands.findIndex(b => b.id === targetBandId);
+    if (fromIdx < 0 || targetIdx < 0 || fromIdx === targetIdx) return;
+    pushUndo();
+    const [moved] = bands.splice(fromIdx, 1);
+    let insertIdx = bands.findIndex(b => b.id === targetBandId);
+    if (placeAfter) insertIdx += 1;
+    bands.splice(insertIdx, 0, moved);
+    state.selectedBandId = dragBandId;
+    renderAll();
+    setStatus(`Bant taşındı: ${moved.name}`);
   }
 
   // ---------- Keyboard Shortcuts ----------
@@ -2619,7 +2690,23 @@
     const band = findBand(state.selectedBandId);
     if (!band) return;
     const comps = band.components.filter(c => state.multiIds.has(c.id));
-    if (comps.length === 0) return;
+    if (comps.length === 0) {
+      // Band selected (no component): ArrowDown grows band height, ArrowUp shrinks band height
+      if (dyMm === 0) return;
+      const minChildH = (band.components || []).reduce((mx, c) => {
+        const b = (Number(c.yMm) || 0) + (Number(c.heightMm) || 0);
+        return b > mx ? b : mx;
+      }, 0);
+      const minH = Math.max(4, minChildH > 0 ? Math.round((minChildH + 0.5) * 10) / 10 : 4);
+      const nextH = Math.max(minH, Math.round(((Number(band.heightMm) || 10) + dyMm) * 10) / 10);
+      if (nextH === band.heightMm) return;
+      pushUndo();
+      band.heightMm = nextH;
+      renderCanvas();
+      renderProperties();
+      setStatus(`${band.name} ${t('height')}: ${nextH.toFixed(1)} mm`);
+      return;
+    }
     pushUndo();
     comps.forEach(c => {
       c.xMm = Math.max(0, snapMm(c.xMm + dxMm));

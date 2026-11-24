@@ -4,6 +4,13 @@ Bu projedeki tüm önemli değişiklikler bu dosyada belgelenir.
 
 Format [Keep a Changelog](https://keepachangelog.com/tr/1.0.0/) standardına ve [Semantic Versioning](https://semver.org/) sürümleme kurallarına uygundur.
 
+## [1.0.8] - 2026-11-24
+
+### Düzeltilenler
+- **Render motoru:** Raporda veri kaynağına bağlı bir Data bandı varken veri kaynağı boş bırakılmış Data bandı, o kaynağın kayıt sayısı kadar tekrar basılıyordu ("Boş Rapor" şablonunda satırların önüne boşluk ekliyordu). Bu bant artık statik bant gibi bir kez basılır. Raporda hiç bağlı Data bandı yoksa eski davranış (ilk veri kaynağını kullanma) korunur.
+- **Web Designer:** Bant silme ve "Master Yap" ile bant çıkarma işlemlerinden sonra bantlar geri geliyordu (`syncActivePageToPagesArray` eski bant dizisini geri yüklüyordu).
+- **Web Designer:** Yerleşim sihirbazındaki sütun ve bant onay kutuları alt alta ve ortalı görünüyordu; satır içi hizalandı.
+
 ## [1.0.5] - 2026-11-22
 
 ### Eklenenler & İyileştirilenler

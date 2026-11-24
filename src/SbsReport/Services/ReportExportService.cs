@@ -42,7 +42,7 @@ public class ReportExportService
         return (format ?? "pdf").Trim().ToLowerInvariant() switch
         {
             "pdf" => (ExportPdf(rendered), "application/pdf", ".pdf"),
-            "xlsx" or "xls" or "excel" => (ExportExcelXml(rendered), "application/vnd.ms-excel", ".xls"),
+            "xlsx" or "xls" or "excel" => (ExportXlsx(rendered), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", ".xlsx"),
             "docx" or "doc" or "word" => (ExportWordHtml(rendered), "application/msword", ".doc"),
             "html" or "htm" => (ExportHtml(rendered), "text/html; charset=utf-8", ".html"),
             "csv" => (ExportCsv(rendered), "text/csv; charset=utf-8", ".csv"),
@@ -77,8 +77,9 @@ public class ReportExportService
         sb.AppendLine($"<title>{WebUtility.HtmlEncode(r.ReportName)}</title>");
         sb.AppendLine("<style>");
         sb.AppendLine($"@page {{ size: {r.PageWidthMm.ToString(CultureInfo.InvariantCulture)}mm {r.PageHeightMm.ToString(CultureInfo.InvariantCulture)}mm; margin: 0; }}");
-        sb.AppendLine("body{margin:0;padding:16px;background:#e2e8f0;font-family:'Segoe UI',Inter,Arial,sans-serif;display:flex;flex-direction:column;align-items:center;gap:16px;}");
-        sb.AppendLine(".sbs-page{position:relative;background:#fff;box-shadow:0 4px 20px rgba(0,0,0,.15);overflow:hidden;page-break-after:always;}");
+        sb.AppendLine("body{margin:0;padding:16px;background:#e2e8f0;font-family:'Segoe UI',Inter,Arial,sans-serif;display:flex;flex-direction:column;align-items:center;gap:16px;-webkit-print-color-adjust:exact;print-color-adjust:exact;}");
+        sb.AppendLine(".sbs-page{position:relative;background:#fff;box-shadow:0 4px 20px rgba(0,0,0,.15);overflow:hidden;page-break-after:always;break-after:page;}");
+        sb.AppendLine(".sbs-page:last-child{page-break-after:auto;break-after:auto;}");
         sb.AppendLine(".sbs-el{position:absolute;box-sizing:border-box;display:flex;padding:1px 3px;overflow:hidden;white-space:pre-wrap;word-break:break-word;}");
         sb.AppendLine(".sbs-wm{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;font-weight:800;text-transform:uppercase;}");
         sb.AppendLine("@media print{body{background:#fff;padding:0;gap:0;}.sbs-page{box-shadow:none;}}");
@@ -134,42 +135,148 @@ public class ReportExportService
     }
 
     // =========================================================================
-    // 3. Microsoft Excel (.xls SpreadsheetML — Türkçe UTF-8 tam destekli)
+    // 3. Gerçek Microsoft Excel OOXML (.xlsx — Sıfır Bağımlılık, Uyarı/Hata Yok!)
     // =========================================================================
-    public byte[] ExportExcelXml(RenderedReport r)
+    public byte[] ExportXlsx(RenderedReport r)
     {
-        var sb = new StringBuilder();
-        sb.AppendLine("<?xml version=\"1.0\" encoding=\"UTF-8\"?>");
-        sb.AppendLine("<?mso-application progid=\"Excel.Sheet\"?>");
-        sb.AppendLine("<Workbook xmlns=\"urn:schemas-microsoft-com:office:spreadsheet\" xmlns:ss=\"urn:schemas-microsoft-com:office:spreadsheet\">");
-        sb.AppendLine("<Styles>");
-        sb.AppendLine("<Style ss:ID=\"Default\"><Font ss:FontName=\"Segoe UI\" ss:Size=\"10\"/></Style>");
-        sb.AppendLine("<Style ss:ID=\"Bold\"><Font ss:FontName=\"Segoe UI\" ss:Size=\"10\" ss:Bold=\"1\"/></Style>");
-        sb.AppendLine("</Styles>");
-
-        foreach (var p in r.Pages)
+        using var ms = new MemoryStream(16384);
+        using (var zip = new ZipArchive(ms, ZipArchiveMode.Create, leaveOpen: true))
         {
-            sb.AppendLine($"<Worksheet ss:Name=\"Sayfa_{p.PageNumber}\"><Table>");
-            var rows = p.Elements
-                .Where(e => !string.IsNullOrWhiteSpace(e.Text))
-                .GroupBy(e => Math.Round(e.YMm / 4.0))
-                .OrderBy(g => g.Key);
-
-            foreach (var row in rows)
+            static void WriteEntry(ZipArchive z, string path, string content)
             {
-                sb.Append("<Row>");
-                foreach (var cell in row.OrderBy(e => e.XMm))
-                {
-                    var styleId = cell.Bold ? "Bold" : "Default";
-                    sb.Append($"<Cell ss:StyleID=\"{styleId}\"><Data ss:Type=\"String\">{WebUtility.HtmlEncode(cell.Text)}</Data></Cell>");
-                }
-                sb.AppendLine("</Row>");
+                var entry = z.CreateEntry(path, CompressionLevel.Optimal);
+                using var sw = new StreamWriter(entry.Open(), new UTF8Encoding(false));
+                sw.Write(content);
             }
-            sb.AppendLine("</Table></Worksheet>");
+
+            WriteEntry(zip, "[Content_Types].xml",
+                "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>" +
+                "<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">" +
+                "<Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>" +
+                "<Default Extension=\"xml\" ContentType=\"application/xml\"/>" +
+                "<Override PartName=\"/xl/workbook.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml\"/>" +
+                "<Override PartName=\"/xl/styles.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml\"/>" +
+                "<Override PartName=\"/xl/worksheets/sheet1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml\"/>" +
+                "</Types>");
+
+            WriteEntry(zip, "_rels/.rels",
+                "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>" +
+                "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">" +
+                "<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"xl/workbook.xml\"/>" +
+                "</Relationships>");
+
+            string sheetName = SanitizeSheetName(r.ReportName);
+            WriteEntry(zip, "xl/workbook.xml",
+                "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>" +
+                "<workbook xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\">" +
+                $"<sheets><sheet name=\"{XmlEscape(sheetName)}\" sheetId=\"1\" r:id=\"rId1\"/></sheets>" +
+                "</workbook>");
+
+            WriteEntry(zip, "xl/_rels/workbook.xml.rels",
+                "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>" +
+                "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">" +
+                "<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" Target=\"worksheets/sheet1.xml\"/>" +
+                "<Relationship Id=\"rId2\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles\" Target=\"styles.xml\"/>" +
+                "</Relationships>");
+
+            WriteEntry(zip, "xl/styles.xml",
+                "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>" +
+                "<styleSheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">" +
+                "<fonts count=\"2\">" +
+                "<font><sz val=\"10\"/><name val=\"Calibri\"/></font>" +
+                "<font><b/><sz val=\"10\"/><name val=\"Calibri\"/></font>" +
+                "</fonts>" +
+                "<fills count=\"3\">" +
+                "<fill><patternFill patternType=\"none\"/></fill>" +
+                "<fill><patternFill patternType=\"gray125\"/></fill>" +
+                "<fill><patternFill patternType=\"solid\"><fgColor rgb=\"FFEFF6FF\"/></patternFill></fill>" +
+                "</fills>" +
+                "<borders count=\"2\">" +
+                "<border><left/><right/><top/><bottom/><diagonal/></border>" +
+                "<border><left style=\"thin\"><color rgb=\"FFCBD5E1\"/></left><right style=\"thin\"><color rgb=\"FFCBD5E1\"/></right><top style=\"thin\"><color rgb=\"FFCBD5E1\"/></top><bottom style=\"thin\"><color rgb=\"FFCBD5E1\"/></bottom><diagonal/></border>" +
+                "</borders>" +
+                "<cellStyleXfs count=\"1\"><xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\"/></cellStyleXfs>" +
+                "<cellXfs count=\"4\">" +
+                "<xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\" xfId=\"0\"/>" +
+                "<xf numFmtId=\"0\" fontId=\"1\" fillId=\"0\" borderId=\"0\" xfId=\"0\"/>" +
+                "<xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"1\" xfId=\"0\"/>" +
+                "<xf numFmtId=\"0\" fontId=\"1\" fillId=\"2\" borderId=\"1\" xfId=\"0\"/>" +
+                "</cellXfs>" +
+                "</styleSheet>");
+
+            // Stream worksheet directly into ZIP entry for low RAM even on 100k+ rows
+            var sheetEntry = zip.CreateEntry("xl/worksheets/sheet1.xml", CompressionLevel.Optimal);
+            using var sw = new StreamWriter(sheetEntry.Open(), new UTF8Encoding(false), 65536);
+            sw.Write("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>");
+            sw.Write("<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><sheetData>");
+
+            int rowIdx = 1;
+            foreach (var p in r.Pages)
+            {
+                var rows = p.Elements
+                    .Where(e => !string.IsNullOrWhiteSpace(e.Text))
+                    .GroupBy(e => Math.Round(e.YMm / 3.5))
+                    .OrderBy(g => g.Key);
+
+                foreach (var row in rows)
+                {
+                    sw.Write($"<row r=\"{rowIdx}\">");
+                    int colIdx = 1;
+                    foreach (var cell in row.OrderBy(e => e.XMm))
+                    {
+                        string colRef = ExcelColName(colIdx) + rowIdx;
+                        bool hasBorder = cell.BorderWidthPx > 0 && !string.Equals(cell.BorderSides, "None", StringComparison.OrdinalIgnoreCase);
+                        int styleIdx = cell.Bold ? (hasBorder ? 3 : 1) : (hasBorder ? 2 : 0);
+                        string val = XmlEscape(cell.Text ?? "");
+                        sw.Write($"<c r=\"{colRef}\" s=\"{styleIdx}\" t=\"inlineStr\"><is><t xml:space=\"preserve\">{val}</t></is></c>");
+                        colIdx++;
+                    }
+                    sw.Write("</row>");
+                    rowIdx++;
+                }
+            }
+            sw.Write("</sheetData></worksheet>");
         }
-        sb.AppendLine("</Workbook>");
-        return Encoding.UTF8.GetBytes(sb.ToString());
+        return ms.ToArray();
     }
+
+    private static string ExcelColName(int col)
+    {
+        var sb = new StringBuilder(4);
+        while (col > 0)
+        {
+            int rem = (col - 1) % 26;
+            sb.Insert(0, (char)('A' + rem));
+            col = (col - 1) / 26;
+        }
+        return sb.ToString();
+    }
+
+    private static string SanitizeSheetName(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return "Rapor";
+        var cleaned = new string(name.Where(c => c is not ('\\' or '/' or '?' or '*' or '[' or ']' or ':')).ToArray()).Trim();
+        if (cleaned.Length == 0) return "Rapor";
+        return cleaned.Length > 31 ? cleaned[..31] : cleaned;
+    }
+
+    private static string XmlEscape(string text)
+    {
+        var sb = new StringBuilder(text.Length + 8);
+        foreach (char ch in text)
+        {
+            if (ch == '&') sb.Append("&amp;");
+            else if (ch == '<') sb.Append("&lt;");
+            else if (ch == '>') sb.Append("&gt;");
+            else if (ch == '"') sb.Append("&quot;");
+            else if (ch == '\'') sb.Append("&apos;");
+            else if (ch == '\t' || ch == '\n' || ch == '\r' || ch >= 0x20) sb.Append(ch);
+        }
+        return sb.ToString();
+    }
+
+    // Geriye dönük uyumluluk için eski metod adı korunur
+    public byte[] ExportExcelXml(RenderedReport r) => ExportXlsx(r);
 
     // =========================================================================
     // 4. Microsoft Word (.doc — Word-compatible HTML/Office XML, Türkçe UTF-8)

@@ -10,7 +10,7 @@
     <!-- NuGet Package Metadata -->
     <IsPackable>true</IsPackable>
     <PackageId>SbsReport</PackageId>
-    <Version>1.0.8</Version>
+    <Version>1.0.9</Version>
     <Authors>Serdar ÖZDEMİR (Sobis)</Authors>
     <Company>Sobis</Company>
     <Copyright>Copyright (c) 2026 Serdar ÖZDEMİR / Sobis</Copyright>
@@ -21,7 +21,7 @@
     <PackageProjectUrl>https://github.com/iventhosting/SbsReport</PackageProjectUrl>
     <RepositoryUrl>https://github.com/iventhosting/SbsReport</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
-    <PackageReleaseNotes>1.0.8: Motor: GrowToHeight, ShrinkFontToFit, ProcessingDuplicates (Hide/Merge), PrintOn, PrintAtBottom, ResetPageNumber, KeepGroupTogether, HideZeros, MaxNumberOfLines, ImageFit (Stretch), AllowHtmlTags, EmptyBand, OverlayBand, çok sütunlu DataBand (Columns), TextInCells (TC/IBAN kutucukları) ve Hesaplanan Sütunlar. İfade Motoru: ToCurrencyWordsTr, ToWordsTr, CountDistinct, SumDistinct, RunningSum, Median, First/Last, Tarih/Metin/Switch fonksiyonları. Export: Gerçek OOXML .docx ve sayısal hücre/sütun genişliği destekli gelişmiş .xlsx. Web Designer: Canlı Rapor Denetleyici, Stil Tasarımcısı, Kenarlık Ayarları, sabit boyutlu Sayfa Yapısı ve İfade Düzenleyici, 3 sekmeli renk paleti, 4 ayrı sağ tık menüsü (Obje/Bant/Sayfa/Sözlük — veri kaynağı/sütun silme dahil), tema uyumlu özel diyaloglar ve Sobis ikonu.</PackageReleaseNotes>
+    <PackageReleaseNotes>1.0.9: Motor: GrowToHeight, ShrinkFontToFit, ProcessingDuplicates (Hide/Merge), PrintOn, PrintAtBottom, ResetPageNumber, KeepGroupTogether, HideZeros, MaxNumberOfLines, ImageFit (Stretch), AllowHtmlTags, EmptyBand, OverlayBand, çok sütunlu DataBand (Columns), TextInCells (TC/IBAN kutucukları) ve Hesaplanan Sütunlar. İfade Motoru: ToCurrencyWordsTr, ToWordsTr, CountDistinct, SumDistinct, RunningSum, Median, First/Last, Tarih/Metin/Switch fonksiyonları. Export: Gerçek OOXML .docx ve sayısal hücre/sütun genişliği destekli gelişmiş .xlsx. Web Designer: Canlı Rapor Denetleyici, Stil Tasarımcısı, Kenarlık Ayarları, sabit boyutlu Sayfa Yapısı ve İfade Düzenleyici, 3 sekmeli renk paleti, 4 ayrı sağ tık menüsü (Obje/Bant/Sayfa/Sözlük), tıklayınca anında görünen 8 boyutlandırma tutamacı, Shift+Ok (ızgara adımıyla boyutlandırma) / Ctrl+Ok (taşıma), tema uyumlu özel diyaloglar ve Sobis ikonu.</PackageReleaseNotes>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>$(NoWarn);CS1591</NoWarn>
   </PropertyGroup>

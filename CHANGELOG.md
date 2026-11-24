@@ -4,7 +4,7 @@ Bu projedeki tüm önemli değişiklikler bu dosyada belgelenir.
 
 Format [Keep a Changelog](https://keepachangelog.com/tr/1.0.0/) standardına ve [Semantic Versioning](https://semver.org/) sürümleme kurallarına uygundur.
 
-## [1.0.8] - 2026-11-24
+## [1.0.9] - 2026-11-24
 
 ### Eklenenler — Rapor Motoru & Bileşenler
 - **Bant & Sayfa Davranışları:** `GrowToHeight`, `ShrinkFontToFit`, `ProcessingDuplicates` (`None` / `Hide` / `Merge`), `PrintOn` (`AllPages`, `ExceptFirstPage`, `ExceptLastPage`, `OnlyFirstPage`, `OnlyLastPage`), `PrintAtBottom`, `ResetPageNumber`, `KeepGroupTogether`, `Enabled`, `Printable`, `HideZeros` (Sıfırları Gizle), `MaxNumberOfLines` ve `ImageFit` (`Contain` / `Fill` / `Cover` / `None`).
@@ -19,7 +19,9 @@ Format [Keep a Changelog](https://keepachangelog.com/tr/1.0.0/) standardına ve 
 - **Canlı Rapor Denetleyici (`Report Checker`):** Alt durum çubuğunda canlı hata/uyarı sayacı ve tek tıkla ilgili bileşene odaklanma.
 - **Yeni Diyaloglar (Sabit Yükseklikli):** Stil Tasarımcısı (`✨ Stiller`), Gelişmiş Kenarlık Ayarları (`⊞ Border Setup`), sağ ikon menülü ve canlı önizlemeli Sayfa Yapısı (`⚙ Sayfa Yapısı` — boş sayfaya çift tıkla da açılır), Yeni/Hesaplanan Sütun editörü (`#colEditorModal`) ve aramalı/HTML araç çubuklu yeni İfade Düzenleyici.
 - **4 Ayrı Sağ Tık Menüsü:** Obje (`#ctxMenu`), Bant (`#ctxBandMenu`), Sayfa/Form (`#ctxPageMenu`) ve Sözlük (`#ctxDictMenu` — veri kaynağı/sütun ekleme, hesaplanan sütun, düzenleme ve silme).
-- **Modern UI & Tema Tutarlılığı:** 3 sekmeli renk paleti (`Palet` / `İsimli Renkler` / `Özel`), belirgin seçim vurgusu, sabit `14px` checkbox'lar, Sobis ikonu (`favicon.ico`) ve tüm tarayıcı `alert`/`confirm`/`prompt` pencerelerinin tema uyumlu `#sbsDialogModal` ile değiştirilmesi.
+- **Modern UI & Tema Tutarlılığı:** 3 sekmeli renk paleti (`Palet` / `İsimli Renkler` / `Özel`), belirgin seçim vurgusu, tıklayınca anında görünen 8 boyutlandırma tutamacı, **Shift+Ok** ile ızgara adımı kadar genişlik/yükseklik boyutlandırma ve **Ctrl+Ok / Ok** ile ızgara adımı kadar taşıma, sabit `14px` checkbox'lar, Sobis ikonu (`favicon.ico`) ve tüm tarayıcı `alert`/`confirm`/`prompt` pencerelerinin tema uyumlu `#sbsDialogModal` ile değiştirilmesi.
+
+## [1.0.8] - 2026-11-24
 
 ### Düzeltilenler
 - **Render motoru:** Raporda veri kaynağına bağlı bir Data bandı varken veri kaynağı boş bırakılmış Data bandı, o kaynağın kayıt sayısı kadar tekrar basılıyordu ("Boş Rapor" şablonunda satırların önüne boşluk ekliyordu). Bu bant artık statik bant gibi bir kez basılır. Raporda hiç bağlı Data bandı yoksa eski davranış (ilk veri kaynağını kullanma) korunur.

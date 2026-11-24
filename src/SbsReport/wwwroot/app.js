@@ -1177,8 +1177,12 @@
       renderInspectorTargetSelect();
       renderProperties();
       syncToolbarFromSelection();
-      $$('.comp-box').forEach(x => x.classList.remove('selected'));
+      $$('.comp-box').forEach(x => {
+        x.classList.remove('selected');
+        x.querySelectorAll(':scope > .resize-handle').forEach(rh => rh.remove());
+      });
       el.classList.add('selected');
+      attachResizeHandles(el, comp);
       startCompDrag(e, band, comp, el);
     };
 
@@ -1203,15 +1207,21 @@
 
     // 8 Resize Handles on selected component
     if (isSel) {
-      ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'].forEach(dir => {
-        const h = document.createElement('div');
-        h.className = `resize-handle rh-${dir}`;
-        h.onmousedown = (e) => startCompResize(e, comp, el, dir);
-        el.appendChild(h);
-      });
+      attachResizeHandles(el, comp);
     }
 
     return el;
+  }
+
+  function attachResizeHandles(el, comp) {
+    if (comp.locked) return;
+    el.querySelectorAll(':scope > .resize-handle').forEach(rh => rh.remove());
+    ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'].forEach(dir => {
+      const h = document.createElement('div');
+      h.className = `resize-handle rh-${dir}`;
+      h.onmousedown = (ev) => startCompResize(ev, comp, el, dir);
+      el.appendChild(h);
+    });
   }
 
   // ---------- Drag & Resize with Snap Guides ----------
@@ -3049,14 +3059,41 @@
       return;
     }
 
-    // Arrow keys nudge
+    // Stimulsoft-style Arrow keys:
+    // Shift + Arrow  => Resize width/height by 1 grid step (Alt+Shift => 0.5mm fine)
+    // Ctrl + Arrow or Arrow => Move X/Y by 1 grid step (Alt => 0.5mm fine)
     if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) {
       e.preventDefault();
-      const step = e.shiftKey ? 5 : 1;
+      const gridStep = Math.max(0.5, Number(state.report?.page?.gridSizeMm) || 2);
+      const step = e.altKey ? 0.5 : gridStep;
       const dx = e.key === 'ArrowLeft' ? -step : e.key === 'ArrowRight' ? step : 0;
       const dy = e.key === 'ArrowUp' ? -step : e.key === 'ArrowDown' ? step : 0;
-      nudgeSelected(dx, dy);
+      if (e.shiftKey) {
+        resizeSelectedByKey(dx, dy);
+      } else {
+        nudgeSelected(dx, dy);
+      }
     }
+  }
+
+  function resizeSelectedByKey(dwMm, dhMm) {
+    const band = findBand(state.selectedBandId);
+    if (!band) return;
+    const comps = band.components.filter(c => state.multiIds.has(c.id) && !c.locked);
+    if (comps.length === 0) {
+      // No component selected -> resize band height by grid step
+      nudgeSelected(0, dhMm);
+      return;
+    }
+    pushUndo();
+    comps.forEach(c => {
+      c.widthMm = Math.max(2, Math.round(((Number(c.widthMm) || 10) + dwMm) * 10) / 10);
+      c.heightMm = Math.max(2, Math.round(((Number(c.heightMm) || 6) + dhMm) * 10) / 10);
+    });
+    renderCanvas();
+    renderProperties();
+    const first = comps[0];
+    setStatusGeometry(first.xMm, first.yMm, first.widthMm, first.heightMm);
   }
 
   function nudgeSelected(dxMm, dyMm) {

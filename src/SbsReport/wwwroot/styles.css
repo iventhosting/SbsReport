@@ -401,17 +401,17 @@ textarea.rinput { height: auto; padding: 5px; }
 
 /* 8 Resize Handles */
 .resize-handle {
-  position: absolute; width: 6px; height: 6px; background: #ffffff; border: 1.5px solid var(--accent);
-  z-index: 35;
+  position: absolute; width: 8px; height: 8px; background: #ffffff; border: 1.5px solid #2563eb;
+  border-radius: 1px; z-index: 40; box-shadow: 0 1px 2px rgba(0,0,0,.3);
 }
-.rh-nw { top: -3.5px; left: -3.5px; cursor: nwse-resize; }
-.rh-n  { top: -3.5px; left: 50%; margin-left: -3px; cursor: ns-resize; }
-.rh-ne { top: -3.5px; right: -3.5px; cursor: nesw-resize; }
-.rh-e  { right: -3.5px; top: 50%; margin-top: -3px; cursor: ew-resize; }
-.rh-se { right: -3.5px; bottom: -3.5px; cursor: nwse-resize; }
-.rh-s  { bottom: -3.5px; left: 50%; margin-left: -3px; cursor: ns-resize; }
-.rh-sw { bottom: -3.5px; left: -3.5px; cursor: nesw-resize; }
-.rh-w  { left: -3.5px; top: 50%; margin-top: -3px; cursor: ew-resize; }
+.rh-nw { top: -4px; left: -4px; cursor: nwse-resize; }
+.rh-n  { top: -4px; left: 50%; margin-left: -4px; cursor: ns-resize; }
+.rh-ne { top: -4px; right: -4px; cursor: nesw-resize; }
+.rh-e  { right: -4px; top: 50%; margin-top: -4px; cursor: ew-resize; }
+.rh-se { right: -4px; bottom: -4px; cursor: nwse-resize; }
+.rh-s  { bottom: -4px; left: 50%; margin-left: -4px; cursor: ns-resize; }
+.rh-sw { bottom: -4px; left: -4px; cursor: nesw-resize; }
+.rh-w  { left: -4px; top: 50%; margin-top: -4px; cursor: ew-resize; }
 
 .snap-guide { position: absolute; background: var(--guide); pointer-events: none; z-index: 50; }
 .snap-guide.v { width: 1px; top: 0; bottom: 0; }
